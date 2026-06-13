@@ -28,14 +28,19 @@ drizzle-orm
 
 #### Step 2 - Configure the Durable Object export
 
-```toml copy filename="wrangler.toml"
-name = "drizzle-durable-object-app"
-main = "src/index.ts"
-compatibility_date = "2026-06-13"
-
-[exports.NotesDatabase]
-type = "durable_object"
-storage = "sqlite"
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "drizzle-durable-object-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "exports": {
+    "NotesDatabase": {
+      "type": "durable_object",
+      "storage": "sqlite"
+    }
+  }
+}
 ```
 
 #### Step 3 - Create Drizzle from the Durable Object context

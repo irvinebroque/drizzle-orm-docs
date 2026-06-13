@@ -37,14 +37,19 @@ export const users = sqliteTable('users', {
 
 #### Step 3 - Configure D1
 
-```toml copy filename="wrangler.toml"
-name = "drizzle-d1-app"
-main = "src/index.ts"
-compatibility_date = "2026-06-13"
-
-[exports.AppDatabase]
-type = "durable_object"
-storage = "sqlite"
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "drizzle-d1-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "exports": {
+    "AppDatabase": {
+      "type": "durable_object",
+      "storage": "sqlite"
+    }
+  }
+}
 ```
 
 #### Step 4 - Connect Drizzle

@@ -35,14 +35,19 @@ export const posts = sqliteTable('posts', {
 
 #### Step 3 - Configure D1
 
-```toml copy filename="wrangler.toml"
-name = "d1-drizzle-app"
-main = "src/index.ts"
-compatibility_date = "2026-06-13"
-
-[exports.BlogDatabase]
-type = "durable_object"
-storage = "sqlite"
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "d1-drizzle-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "exports": {
+    "BlogDatabase": {
+      "type": "durable_object",
+      "storage": "sqlite"
+    }
+  }
+}
 ```
 
 #### Step 4 - Use Drizzle

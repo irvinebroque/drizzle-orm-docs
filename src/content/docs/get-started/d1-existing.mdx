@@ -48,14 +48,19 @@ Drizzle Kit does not `pull` schema for `driver: "d1-object"`. If you are moving 
 
 Replace the old `[[d1_databases]]` binding for new `d1-object` code with an export.
 
-```toml copy filename="wrangler.toml"
-name = "drizzle-d1-app"
-main = "src/index.ts"
-compatibility_date = "2026-06-13"
-
-[exports.AppDatabase]
-type = "durable_object"
-storage = "sqlite"
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "drizzle-d1-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "exports": {
+    "AppDatabase": {
+      "type": "durable_object",
+      "storage": "sqlite"
+    }
+  }
+}
 ```
 
 #### Step 4 - Replace `env.DB` usage with object routing

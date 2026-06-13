@@ -34,14 +34,19 @@ export const messages = sqliteTable('messages', {
 
 #### Step 3 - Configure the Durable Object
 
-```toml copy filename="wrangler.toml"
-name = "durable-object-drizzle-app"
-main = "src/index.ts"
-compatibility_date = "2026-06-13"
-
-[exports.ChatRoom]
-type = "durable_object"
-storage = "sqlite"
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "durable-object-drizzle-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "exports": {
+    "ChatRoom": {
+      "type": "durable_object",
+      "storage": "sqlite"
+    }
+  }
+}
 ```
 
 #### Step 4 - Use Drizzle inside the Durable Object
