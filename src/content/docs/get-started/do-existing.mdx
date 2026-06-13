@@ -9,11 +9,11 @@ import Prerequisites from "@mdx/Prerequisites.astro";
 # Add Drizzle to an existing SQLite Durable Objects project
 
 <Prerequisites>
-  - **Cloudflare Durable Objects** - stateful compute and SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/)
+  - **Cloudflare Durable Objects** - [read here](https://developers.cloudflare.com/durable-objects/)
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
-For existing SQL-backed Durable Objects projects, prefer moving Drizzle usage to the `drizzle-orm/d1-object` adapter. It keeps the Drizzle client inside the object that owns SQLite storage and adds read replication and bookmark helpers.
+For existing SQL-backed Durable Objects projects, prefer `drizzle-orm/d1-object`.
 
 <Callout type="info" title="Recommended adapter">
 Use `drizzle-orm/d1-object` for the durable object database path. Keep `drizzle-orm/durable-sqlite` only for existing low-level integrations that cannot move yet.
@@ -102,7 +102,7 @@ Generate bundled migrations:
 npx drizzle-kit generate
 ```
 
-Apply them from a Durable Object method:
+Apply them from an object method:
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';
@@ -156,7 +156,7 @@ export default defineConfig({
 });
 ```
 
-Drizzle Kit cannot directly `push`, `pull`, `migrate`, or open `studio` against a SQLite Durable Object. Generate migrations and apply them through object code.
+Drizzle Kit cannot directly `push`, `pull`, `migrate`, or open `studio` against this driver. Generate migrations and apply them through object code.
 
 #### Step 5 - Generate types and run locally
 

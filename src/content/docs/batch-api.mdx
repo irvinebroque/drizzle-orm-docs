@@ -24,7 +24,7 @@ then an error is returned for that specific statement, and it aborts or rolls ba
 Drizzle ORM provides APIs to run SQL statements in batch for `LibSQL`, `Neon` and `D1`:
 
 <Callout type="warning" title="Legacy D1 binding API">
-The D1 Batch API applies to the older `drizzle-orm/d1` database binding driver. New Cloudflare D1 application-object projects should use `drizzle-orm/d1-object`, where SQL runs locally inside the Durable Object and migrations run through object methods.
+The D1 Batch API applies to the older `drizzle-orm/d1` database binding driver. New Cloudflare D1 projects should use `drizzle-orm/d1-object` and generated migrations instead.
 </Callout>
 
 ```ts

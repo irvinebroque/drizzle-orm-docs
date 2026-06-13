@@ -8,7 +8,7 @@ import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 # Get Started with Drizzle and SQLite Durable Objects
 
 <Prerequisites>
-  - **Cloudflare Durable Objects** - stateful compute and SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/)
+  - **Cloudflare Durable Objects** - [read here](https://developers.cloudflare.com/durable-objects/)
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
@@ -126,7 +126,7 @@ Generate migrations:
 npx drizzle-kit generate
 ```
 
-Apply migrations through a Durable Object method:
+Apply migrations through an object method:
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';

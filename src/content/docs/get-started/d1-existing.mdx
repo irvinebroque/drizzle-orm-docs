@@ -9,15 +9,14 @@ import Prerequisites from "@mdx/Prerequisites.astro";
 # Add Drizzle to an existing D1 project
 
 <Prerequisites>
-  - **Cloudflare D1** - SQLite databases backed by Durable Objects - [read here](https://developers.cloudflare.com/d1/)
-  - **Cloudflare Durable Objects** - stateful compute and SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/)
+  - **Cloudflare D1** - [read here](https://developers.cloudflare.com/d1/)
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
-For existing Cloudflare projects, the recommended Drizzle path is still `drizzle-orm/d1-object`. Move new SQL-backed application code into a SQLite-backed Durable Object and route requests to it from your Worker.
+For existing Cloudflare projects, the recommended D1 path is still `drizzle-orm/d1-object`.
 
 <Callout type="warning" title="Legacy D1 bindings">
-If your existing app uses a D1 database binding like `env.DB`, the `drizzle-orm/d1` driver and `driver: "d1-http"` configuration remain available as a legacy path. Do not use them for new D1 application-object projects.
+If your existing app uses a D1 database binding like `env.DB`, the `drizzle-orm/d1` driver and `driver: "d1-http"` configuration remain available as a legacy path. Do not use them for new D1 projects.
 </Callout>
 
 #### Step 1 - Install packages
@@ -29,7 +28,7 @@ drizzle-orm
 
 #### Step 2 - Add or keep your Drizzle schema
 
-Use SQLite schema definitions for D1 application objects.
+Use SQLite schema definitions.
 
 ```typescript copy filename="src/schema.ts"
 import { sql } from 'drizzle-orm';
@@ -43,11 +42,11 @@ export const users = sqliteTable('users', {
 });
 ```
 
-Drizzle Kit does not `pull` schema from a D1 application object. If you are moving from a legacy D1 binding database, keep using the legacy flow for that database until you have ported the schema and data into your application-object model.
+Drizzle Kit does not `pull` schema for `driver: "d1-object"`. If you are moving from a legacy D1 binding database, keep using the legacy flow for that database until you have ported the schema and data.
 
-#### Step 3 - Add a SQLite-backed Durable Object
+#### Step 3 - Configure D1
 
-Replace the old `[[d1_databases]]` binding for new application-object code with a Durable Object export.
+Replace the old `[[d1_databases]]` binding for new `d1-object` code with an export.
 
 ```toml copy filename="wrangler.toml"
 name = "drizzle-d1-app"
@@ -69,7 +68,7 @@ import { drizzle } from 'drizzle-orm/d1';
 const db = drizzle(env.DB);
 ```
 
-New D1 application-object code creates Drizzle inside the object:
+New D1 code creates Drizzle inside the database class:
 
 ```typescript copy filename="src/index.ts"
 import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
@@ -154,7 +153,7 @@ Generate migrations:
 npx drizzle-kit generate
 ```
 
-#### Step 6 - Apply migrations from the primary object
+#### Step 6 - Apply migrations
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';

@@ -8,10 +8,9 @@ import Prerequisites from "@mdx/Prerequisites.astro";
 <Prerequisites>
 - Database [connection basics](/docs/connect-overview) with Drizzle
 - Cloudflare D1 - [read here](https://developers.cloudflare.com/d1/)
-- Cloudflare Durable Objects - [read here](https://developers.cloudflare.com/durable-objects/)
 </Prerequisites>
 
-Use `drizzle-orm/d1-object` for Cloudflare D1. Create the Drizzle client inside the Durable Object that owns your SQLite database.
+Use `drizzle-orm/d1-object` for Cloudflare D1.
 
 #### Step 1 - Install packages
 
@@ -34,7 +33,7 @@ export const posts = sqliteTable('posts', {
 });
 ```
 
-#### Step 3 - Configure the Durable Object
+#### Step 3 - Configure D1
 
 ```toml copy filename="wrangler.toml"
 name = "d1-drizzle-app"
@@ -46,7 +45,7 @@ type = "durable_object"
 storage = "sqlite"
 ```
 
-#### Step 4 - Use Drizzle inside the object
+#### Step 4 - Use Drizzle
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
@@ -143,9 +142,9 @@ Generate migrations:
 npx drizzle-kit generate
 ```
 
-#### Step 6 - Apply migrations from the primary object
+#### Step 6 - Apply migrations
 
-Run generated migrations inside the Durable Object.
+Run generated migrations through your D1 class.
 
 ```typescript copy filename="src/index.ts"
 import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
@@ -161,7 +160,7 @@ export class BlogDatabase extends DrizzleD1Object<Env> {
 }
 ```
 
-Call that method through a primary-only stub:
+Call the method through a primary-only stub:
 
 ```typescript copy
 const db = env.BlogDatabase.getByName('site:example.com', {
@@ -172,7 +171,7 @@ await db.applyMigrations();
 ```
 
 <Callout type="warning" title="Legacy D1 binding driver">
-The `drizzle-orm/d1` driver and `driver: "d1-http"` Drizzle Kit configuration are for the older D1 database binding model. Use them only for existing legacy D1 databases that have not moved to the D1 application object model.
+The `drizzle-orm/d1` driver and `driver: "d1-http"` Drizzle Kit configuration are for older D1 database bindings. Use them only for existing legacy D1 projects.
 </Callout>
 
 #### What's next?

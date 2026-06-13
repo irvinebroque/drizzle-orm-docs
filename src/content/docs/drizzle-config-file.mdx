@@ -362,7 +362,7 @@ export default defineConfig({
 </CodeTabs>
 
 <Callout type="info">
-For Cloudflare D1 application objects, `driver: "d1-object"` is used to generate bundled migrations. Drizzle Kit does not connect directly to a D1 application object for `push`, `pull`, `migrate`, or `studio`; apply generated migrations through a primary-only Durable Object method.
+For Cloudflare D1 with `driver: "d1-object"`, Drizzle Kit generates bundled migrations. It does not connect directly for `push`, `pull`, `migrate`, or `studio`; apply generated migrations through a primary-only object method.
 </Callout>
 
 ### `migrations`

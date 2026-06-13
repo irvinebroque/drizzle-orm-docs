@@ -8,8 +8,7 @@ import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 # Get Started with Drizzle and D1
 
 <Prerequisites>
-  - **Cloudflare D1** - SQLite databases backed by Durable Objects - [read here](https://developers.cloudflare.com/d1/)
-  - **Cloudflare Durable Objects** - stateful compute and SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/)
+  - **Cloudflare D1** - [read here](https://developers.cloudflare.com/d1/)
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
@@ -36,7 +35,7 @@ export const users = sqliteTable('users', {
 });
 ```
 
-#### Step 3 - Configure a SQLite-backed Durable Object
+#### Step 3 - Configure D1
 
 ```toml copy filename="wrangler.toml"
 name = "drizzle-d1-app"
@@ -48,9 +47,9 @@ type = "durable_object"
 storage = "sqlite"
 ```
 
-#### Step 4 - Connect Drizzle inside the object
+#### Step 4 - Connect Drizzle
 
-Create the Drizzle client from `this.ctx` inside the Durable Object. Route writes through a primary-only stub and pass bookmarks from write responses to later reads when the client needs read-your-writes consistency.
+Create Drizzle with `drizzle(this.ctx, { schema })` and route writes with `routingMode: 'primary-only'`.
 
 ```typescript copy filename="src/index.ts"
 import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
@@ -149,9 +148,9 @@ Generate bundled migrations:
 npx drizzle-kit generate
 ```
 
-#### Step 7 - Apply migrations from the object
+#### Step 7 - Apply migrations
 
-Run generated migrations inside the Durable Object.
+Run generated migrations through your D1 class.
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';

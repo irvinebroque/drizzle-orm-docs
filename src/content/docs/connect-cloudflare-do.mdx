@@ -7,10 +7,9 @@ import Prerequisites from "@mdx/Prerequisites.astro";
 <Prerequisites>
 - Database [connection basics](/docs/connect-overview) with Drizzle
 - Cloudflare Durable Objects - [read here](https://developers.cloudflare.com/durable-objects/)
-- Cloudflare SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
 </Prerequisites>
 
-Use `drizzle-orm/d1-object` for SQL-backed Durable Objects. Create the Drizzle client inside the object that owns SQLite storage.
+Use `drizzle-orm/d1-object` for SQL-backed Durable Objects.
 
 #### Step 1 - Install packages
 
@@ -149,7 +148,7 @@ npx drizzle-kit generate
 
 #### Step 6 - Apply migrations from the object
 
-Run generated migrations inside the Durable Object.
+Run generated migrations through the object.
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';
@@ -213,7 +212,7 @@ export default defineConfig({
 });
 ```
 
-The older `durable-sqlite` driver does not provide the D1 object adapter's read replication setup, bookmark helpers, or primary migration forwarding.
+The older `durable-sqlite` driver is kept for legacy low-level SQLite integrations.
 
 #### What's next?
 

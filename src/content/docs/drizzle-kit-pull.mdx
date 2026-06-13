@@ -119,7 +119,7 @@ Mostly all drivers of the same dialect share the same set of connection params,
 as for exceptions like `aws-data-api`, `pglight` and `d1-http` - you will have to explicitly specify `driver` param.
 
 <Callout type="warning">
-Cloudflare D1 application objects use `driver: "d1-object"` for generating bundled migrations. `pull` does not connect directly to a D1 application object. The `d1-http` driver is for legacy D1 database binding projects.
+Cloudflare D1 with `driver: "d1-object"` uses generated bundled migrations. `pull` does not connect directly. The `d1-http` driver is for legacy D1 database binding projects.
 </Callout>
 
 <CodeTabs items={["AWS Data API", "PGLite", "Cloudflare D1 HTTP (legacy)"]}>
