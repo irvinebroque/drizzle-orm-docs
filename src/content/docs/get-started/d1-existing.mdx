@@ -65,7 +65,7 @@ Replace the old `[[d1_databases]]` binding for new `d1-object` code with an expo
 }
 ```
 
-#### Step 4 - Replace `env.DB` usage with object routing
+#### Step 4 - Move Drizzle into the database object
 
 Old D1 binding code created Drizzle from a Worker binding:
 
@@ -75,7 +75,7 @@ import { drizzle } from 'drizzle-orm/d1';
 const db = drizzle(env.DB);
 ```
 
-New D1 code creates Drizzle inside the database class:
+New D1 code routes from the Worker to a database object. The Drizzle client and the methods that query it run inside that object:
 
 ```typescript copy filename="src/index.ts"
 import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
@@ -87,6 +87,7 @@ export interface Env {
   AppDatabase: DurableObjectNamespace<AppDatabase>;
 }
 
+// This class is the database. Drizzle runs here, inside the Durable Object.
 export class AppDatabase extends DrizzleD1Object<Env> {
   db = drizzle(this.ctx, { schema });
 
@@ -105,6 +106,7 @@ export default {
     const objectName = `tenant:${url.hostname}`;
 
     if (request.method === 'POST') {
+      // Get the database object for this tenant and call methods on it.
       const db = createD1ObjectSession<AppDatabase>(
         env.AppDatabase.getByName(objectName, {
           routingMode: 'primary-only',
@@ -115,6 +117,7 @@ export default {
       return Response.json(user, { status: 201 });
     }
 
+    // Default routing can use a nearby read replica.
     const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.getByName(objectName));
     const user = await db.client.findUser(url.searchParams.get('email') ?? '');
 

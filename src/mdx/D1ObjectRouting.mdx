@@ -1,3 +1,28 @@
+#### Where your Drizzle code runs
+
+The Worker receives HTTP requests and routes them to a database object. It does not create the Drizzle client itself.
+
+When the Worker calls `env.YourDatabase.getByName(objectName)`, it gets a Durable Object stub for one logical database. Wrapping that stub with `createD1ObjectSession()` gives you a typed client for the methods on that database object:
+
+```typescript
+const stub = env.YourDatabase.getByName(objectName);
+const db = createD1ObjectSession<YourDatabase>(stub);
+
+const result = await db.client.someApplicationMethod();
+```
+
+Those methods run inside the Durable Object, next to SQLite. Put the Drizzle client and the application code that uses it on the object class:
+
+```typescript
+export class YourDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  async someApplicationMethod() {
+    return this.db.select().from(users).all();
+  }
+}
+```
+
 #### Why route reads and writes differently?
 
 With this setup, Cloudflare can keep read replicas close to users. The primary can read and write. Replicas are read-only, but they can serve read traffic without sending every request back to the primary.
