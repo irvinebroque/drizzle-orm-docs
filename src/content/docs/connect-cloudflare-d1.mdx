@@ -54,7 +54,7 @@ export const posts = sqliteTable('posts', {
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
-import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { posts } from './schema';
 import * as schema from './schema';
 
@@ -70,29 +70,17 @@ export interface Env {
 export class BlogDatabase extends DrizzleD1Object<Env> {
   db = drizzle(this.ctx, { schema });
 
-  async listPosts(bookmark: string | null = null) {
-    await this.db.d1.waitForBookmark(bookmark);
-
-    const rows = this.db
+  async listPosts() {
+    return this.db
       .select()
       .from(posts)
       .orderBy(desc(posts.id))
       .limit(10)
       .all();
-
-    return {
-      posts: rows,
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
   }
 
   async createPost(input: CreatePostInput) {
-    const post = this.db.insert(posts).values(input).returning().get();
-
-    return {
-      post,
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+    return this.db.insert(posts).values(input).returning().get();
   }
 }
 
@@ -102,25 +90,22 @@ export default {
     const objectName = `site:${url.hostname}`;
 
     if (request.method === 'POST' && url.pathname === '/posts') {
-      const db = env.BlogDatabase.getByName(objectName, {
-        routingMode: 'primary-only',
-      });
+      const db = createD1ObjectSession<BlogDatabase>(
+        env.BlogDatabase.getByName(objectName, {
+          routingMode: 'primary-only',
+        }),
+      );
       const input = (await request.json()) as CreatePostInput;
-      const result = await db.createPost(input);
+      const post = await db.client.createPost(input);
 
-      return Response.json(result.post, {
-        status: 201,
-        headers: { 'x-d1-bookmark': result.bookmark },
-      });
+      return Response.json(post, { status: 201 });
     }
 
     if (request.method === 'GET' && url.pathname === '/posts') {
-      const db = env.BlogDatabase.getByName(objectName);
-      const result = await db.listPosts(request.headers.get('x-d1-bookmark'));
+      const db = createD1ObjectSession<BlogDatabase>(env.BlogDatabase.getByName(objectName));
+      const posts = await db.client.listPosts();
 
-      return Response.json(result.posts, {
-        headers: { 'x-d1-bookmark': result.bookmark },
-      });
+      return Response.json(posts);
     }
 
     return new Response('Not found', { status: 404 });

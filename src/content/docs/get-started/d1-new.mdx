@@ -54,10 +54,10 @@ export const users = sqliteTable('users', {
 
 #### Step 4 - Connect Drizzle
 
-Create Drizzle with `drizzle(this.ctx, { schema })` and route writes with `routingMode: 'primary-only'`.
+Create Drizzle with `drizzle(this.ctx, { schema })` and wrap the object stub with `createD1ObjectSession()`.
 
 ```typescript copy filename="src/index.ts"
-import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { eq } from 'drizzle-orm';
 import { users } from './schema';
 import * as schema from './schema';
@@ -75,21 +75,11 @@ export class AppDatabase extends DrizzleD1Object<Env> {
   db = drizzle(this.ctx, { schema });
 
   async createUser(input: CreateUserInput) {
-    const user = this.db.insert(users).values(input).returning().get();
-
-    return {
-      user,
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+    return this.db.insert(users).values(input).returning().get();
   }
 
-  async getUser(email: string, bookmark: string | null = null) {
-    await this.db.d1.waitForBookmark(bookmark);
-
-    return {
-      user: this.db.select().from(users).where(eq(users.email, email)).get(),
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+  async getUser(email: string) {
+    return this.db.select().from(users).where(eq(users.email, email)).get();
   }
 }
 
@@ -99,28 +89,22 @@ export default {
     const objectName = `tenant:${url.hostname}`;
 
     if (request.method === 'POST' && url.pathname === '/users') {
-      const db = env.AppDatabase.getByName(objectName, {
-        routingMode: 'primary-only',
-      });
+      const db = createD1ObjectSession<AppDatabase>(
+        env.AppDatabase.getByName(objectName, {
+          routingMode: 'primary-only',
+        }),
+      );
       const input = (await request.json()) as CreateUserInput;
-      const result = await db.createUser(input);
+      const user = await db.client.createUser(input);
 
-      return Response.json(result.user, {
-        status: 201,
-        headers: { 'x-d1-bookmark': result.bookmark },
-      });
+      return Response.json(user, { status: 201 });
     }
 
     if (request.method === 'GET' && url.pathname === '/users') {
-      const db = env.AppDatabase.getByName(objectName);
-      const result = await db.getUser(
-        url.searchParams.get('email') ?? '',
-        request.headers.get('x-d1-bookmark'),
-      );
+      const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.getByName(objectName));
+      const user = await db.client.getUser(url.searchParams.get('email') ?? '');
 
-      return Response.json(result.user, {
-        headers: { 'x-d1-bookmark': result.bookmark },
-      });
+      return Response.json(user);
     }
 
     return new Response('Not found', { status: 404 });

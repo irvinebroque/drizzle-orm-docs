@@ -55,7 +55,7 @@ export const notes = sqliteTable('notes', {
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
-import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { notes } from './schema';
 import * as schema from './schema';
 
@@ -67,21 +67,11 @@ export class NotesDatabase extends DrizzleD1Object<Env> {
   db = drizzle(this.ctx, { schema });
 
   async createNote(body: string) {
-    const note = this.db.insert(notes).values({ body }).returning().get();
-
-    return {
-      note,
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+    return this.db.insert(notes).values({ body }).returning().get();
   }
 
-  async listNotes(bookmark: string | null = null) {
-    await this.db.d1.waitForBookmark(bookmark);
-
-    return {
-      notes: this.db.select().from(notes).orderBy(desc(notes.id)).limit(20).all(),
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+  async listNotes() {
+    return this.db.select().from(notes).orderBy(desc(notes.id)).limit(20).all();
   }
 }
 
@@ -90,24 +80,21 @@ export default {
     const objectName = 'notes:default';
 
     if (request.method === 'POST') {
-      const db = env.NotesDatabase.getByName(objectName, {
-        routingMode: 'primary-only',
-      });
+      const db = createD1ObjectSession<NotesDatabase>(
+        env.NotesDatabase.getByName(objectName, {
+          routingMode: 'primary-only',
+        }),
+      );
       const { body } = (await request.json()) as { body: string };
-      const result = await db.createNote(body);
+      const note = await db.client.createNote(body);
 
-      return Response.json(result.note, {
-        status: 201,
-        headers: { 'x-d1-bookmark': result.bookmark },
-      });
+      return Response.json(note, { status: 201 });
     }
 
-    const db = env.NotesDatabase.getByName(objectName);
-    const result = await db.listNotes(request.headers.get('x-d1-bookmark'));
+    const db = createD1ObjectSession<NotesDatabase>(env.NotesDatabase.getByName(objectName));
+    const notes = await db.client.listNotes();
 
-    return Response.json(result.notes, {
-      headers: { 'x-d1-bookmark': result.bookmark },
-    });
+    return Response.json(notes);
   },
 } satisfies ExportedHandler<Env>;
 ```

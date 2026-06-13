@@ -47,7 +47,7 @@ drizzle-orm
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
-import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { notes } from './schema';
 import * as schema from './schema';
 
@@ -59,33 +59,25 @@ export class NotesDatabase extends DrizzleD1Object<Env> {
   db = drizzle(this.ctx, { schema });
 
   async createNote(body: string) {
-    const note = this.db.insert(notes).values({ body }).returning().get();
-
-    return {
-      note,
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+    return this.db.insert(notes).values({ body }).returning().get();
   }
 
-  async listNotes(bookmark: string | null = null) {
-    await this.db.d1.waitForBookmark(bookmark);
-
-    return {
-      notes: this.db.select().from(notes).orderBy(desc(notes.id)).limit(20).all(),
-      bookmark: await this.db.d1.getCurrentBookmark(),
-    };
+  async listNotes() {
+    return this.db.select().from(notes).orderBy(desc(notes.id)).limit(20).all();
   }
 }
 ```
 
-Route known writes through a primary-only stub:
+Route known writes through a primary-only session:
 
 ```typescript copy
-const db = env.NotesDatabase.getByName('notes:default', {
-  routingMode: 'primary-only',
-});
+const db = createD1ObjectSession<NotesDatabase>(
+  env.NotesDatabase.getByName('notes:default', {
+    routingMode: 'primary-only',
+  }),
+);
 
-await db.createNote('hello');
+await db.client.createNote('hello');
 ```
 
 #### Step 4 - Configure Drizzle Kit
