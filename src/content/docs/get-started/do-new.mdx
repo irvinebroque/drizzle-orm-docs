@@ -9,12 +9,14 @@ import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 # Get Started with Drizzle and SQLite Durable Objects
 
 <Prerequisites>
-  - **Cloudflare SQLite Durable Objects** - SQLite database embedded within a Durable Object - [read here](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
+  - **Cloudflare Durable Objects** - stateful compute and SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/)
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
-<Callout type="warning" title="Legacy low-level path">
-Use this guide only when you already want the low-level `drizzle-orm/durable-sqlite` driver. For new Cloudflare D1 applications, start with [Get Started with Drizzle and D1](/docs/get-started/d1-new), which uses `drizzle-orm/d1-object`.
+Use `drizzle-orm/d1-object` for new SQL-backed Durable Objects. The adapter creates Drizzle from the Durable Object context, configures D1 read replication, and exposes bookmark helpers for read consistency.
+
+<Callout type="info" title="Recommended adapter">
+Start with `drizzle-orm/d1-object`. The older `drizzle-orm/durable-sqlite` driver is covered at the end of this guide for existing low-level Durable Objects SQLite applications.
 </Callout>
 
 #### Step 1 - Install required packages
@@ -24,60 +26,128 @@ drizzle-orm
 -D drizzle-kit wrangler
 </Npm>
 
-#### Step 2 - Configure a SQLite-backed Durable Object
+#### Step 2 - Create a schema
 
-```toml copy filename="wrangler.toml"
-name = "sqlite-durable-objects"
-main = "src/index.ts"
-compatibility_date = "2024-11-12"
-compatibility_flags = [ "nodejs_compat" ]
+```typescript copy filename="src/schema.ts"
+import { sql } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-[[durable_objects.bindings]]
-name = "MY_DURABLE_OBJECT"
-class_name = "MyDurableObject"
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["MyDurableObject"]
-
-[[rules]]
-type = "Text"
-globs = ["**/*.sql"]
-fallthrough = true
+export const notes = sqliteTable('notes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  body: text('body').notNull(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
 ```
 
-#### Step 3 - Connect Drizzle inside the object
+#### Step 3 - Configure a SQLite-backed Durable Object
+
+```toml copy filename="wrangler.toml"
+name = "drizzle-durable-object-app"
+main = "src/index.ts"
+compatibility_date = "2026-06-13"
+
+[exports.NotesDatabase]
+type = "durable_object"
+storage = "sqlite"
+```
+
+#### Step 4 - Connect Drizzle inside the object
 
 ```typescript copy filename="src/index.ts"
-import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
-import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
-import { DurableObject } from 'cloudflare:workers';
+import { desc } from 'drizzle-orm';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { notes } from './schema';
+import * as schema from './schema';
+
+export interface Env {
+  NotesDatabase: DurableObjectNamespace<NotesDatabase>;
+}
+
+export class NotesDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  async createNote(body: string) {
+    const note = this.db.insert(notes).values({ body }).returning().get();
+
+    return {
+      note,
+      bookmark: await this.db.d1.getCurrentBookmark(),
+    };
+  }
+
+  async listNotes(bookmark: string | null = null) {
+    await this.db.d1.waitForBookmark(bookmark);
+
+    return {
+      notes: this.db.select().from(notes).orderBy(desc(notes.id)).limit(20).all(),
+      bookmark: await this.db.d1.getCurrentBookmark(),
+    };
+  }
+}
+
+export default {
+  async fetch(request, env): Promise<Response> {
+    const objectName = 'notes:default';
+
+    if (request.method === 'POST') {
+      const db = env.NotesDatabase.getByName(objectName, {
+        routingMode: 'primary-only',
+      });
+      const { body } = (await request.json()) as { body: string };
+      const result = await db.createNote(body);
+
+      return Response.json(result.note, {
+        status: 201,
+        headers: { 'x-d1-bookmark': result.bookmark },
+      });
+    }
+
+    const db = env.NotesDatabase.getByName(objectName);
+    const result = await db.listNotes(request.headers.get('x-d1-bookmark'));
+
+    return Response.json(result.notes, {
+      headers: { 'x-d1-bookmark': result.bookmark },
+    });
+  },
+} satisfies ExportedHandler<Env>;
+```
+
+#### Step 5 - Configure Drizzle Kit
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  out: './drizzle',
+  schema: './src/schema.ts',
+  dialect: 'sqlite',
+  driver: 'd1-object',
+});
+```
+
+Generate migrations:
+
+```bash copy
+npx drizzle-kit generate
+```
+
+Apply migrations through a Durable Object method:
+
+```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';
-import { users } from './schema';
 
-export class MyDurableObject extends DurableObject {
-  db: DrizzleSqliteDODatabase;
+export class NotesDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
 
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    this.db = drizzle(ctx.storage, { logger: false });
-  }
-
-  async createUser(user: typeof users.$inferInsert) {
-    return this.db.insert(users).values(user).returning().get();
-  }
-
-  async listUsers() {
-    return this.db.select().from(users);
-  }
-
-  async migrate() {
-    migrate(this.db, migrations);
+  applyMigrations() {
+    return this.applyDrizzleMigrations(migrations);
   }
 }
 ```
 
-#### Step 4 - Configure Drizzle Kit
+#### Older `durable-sqlite` driver
+
+Use `driver: "durable-sqlite"` only for existing low-level Durable Objects SQLite applications. It does not provide the D1 object adapter's read replication setup, bookmark helpers, or primary migration forwarding.
 
 ```typescript copy filename="drizzle.config.ts"
 import { defineConfig } from 'drizzle-kit';
@@ -90,15 +160,7 @@ export default defineConfig({
 });
 ```
 
-Generate migrations:
-
-```bash copy
-npx drizzle-kit generate
-```
-
-Apply migrations by calling an object method. Drizzle Kit cannot directly `push`, `pull`, `migrate`, or open `studio` against a SQLite Durable Object.
-
-#### Step 5 - Generate types and run locally
+#### Step 6 - Generate types and run locally
 
 <Npx>
 wrangler types

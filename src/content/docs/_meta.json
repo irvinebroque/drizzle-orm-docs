@@ -46,7 +46,7 @@
   ["connect-cloudflare-d1", "Cloudflare D1"],
   ["connect-bun-sqlite", "Bun SQLite"],
   ["connect-node-sqlite", "Node SQLite"],
-  ["connect-cloudflare-do", "Cloudflare Durable Objects (legacy)"],
+  ["connect-cloudflare-do", "Cloudflare Durable Objects"],
   "---",
   ["connect-expo-sqlite", "Expo SQLite"],
   ["connect-op-sqlite", "OP SQLite"],
