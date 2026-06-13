@@ -1,86 +1,199 @@
 import Npm from "@mdx/Npm.astro";
 import Callout from '@mdx/Callout.astro';
-import AnchorCards from '@mdx/AnchorCards.astro';
-import Steps from '@mdx/Steps.astro';
 import WhatsNextPostgres from "@mdx/WhatsNextPostgres.astro";
 import Prerequisites from "@mdx/Prerequisites.astro";
-import CodeTabs from "@mdx/CodeTabs.astro";
 
 # Drizzle \<\> Cloudflare D1
 
 <Prerequisites>
 - Database [connection basics](/docs/connect-overview) with Drizzle
-- D1 Database - [website](https://developers.cloudflare.com/d1/)
-- D1 driver - [website](https://developers.cloudflare.com/d1/build-with-d1/d1-client-api/)
+- Cloudflare D1 - [read here](https://developers.cloudflare.com/d1/)
+- Cloudflare Durable Objects - [read here](https://developers.cloudflare.com/durable-objects/)
 </Prerequisites>
 
-According to the **[official website](https://developers.cloudflare.com/d1/)**, 
-D1 is Cloudflare's first queryable relational database.  
-  
-Drizzle ORM fully supports the Cloudflare D1 database and Cloudflare Workers environment.
-We embrace SQL dialects and dialect specific drivers and syntax and mirror most popular 
-SQLite-like `all`, `get`, `values` and `run` query methods syntax.
+Use Drizzle with Cloudflare D1 through the `drizzle-orm/d1-object` driver. D1 databases are SQLite-backed Durable Objects: your Worker routes requests to the right object, and Drizzle runs SQL inside that object with `ctx.storage.sql`.
 
-To setup project for your Cloudflare D1 please refer to **[official docs.](https://developers.cloudflare.com/d1/)**
+<Callout type="info" title="Recommended Cloudflare path">
+Start new Cloudflare D1 applications with `drizzle-orm/d1-object`. The older `drizzle-orm/d1` database binding driver and `drizzle-orm/durable-sqlite` driver are legacy paths for existing applications.
+</Callout>
+
+The D1 object driver handles the Durable Object-specific parts for you:
+
+- creates a Drizzle client from the Durable Object context
+- enables D1 read replication by default
+- exposes bookmark helpers for read consistency
+- keeps writes on the primary object
+- applies bundled Drizzle migrations through an object method
 
 #### Step 1 - Install packages
+
 <Npm>
 drizzle-orm
--D drizzle-kit
+-D drizzle-kit wrangler
 </Npm>
 
-#### Step 2 - Initialize the driver and make a query
+#### Step 2 - Define your schema
 
-You would need to have either a `wrangler.json` or a `wrangler.toml` file for D1 database and will look something like this:
-<CodeTabs items={["wrangler.json", "wrangler.toml"]}>
-```json
-{
-    "name": "YOUR_PROJECT_NAME",
-    "main": "src/index.ts",
-    "compatibility_date": "2024-09-26",
-    "compatibility_flags": [
-        "nodejs_compat"
-    ],
-    "d1_databases": [
-        {
-            "binding": "BINDING_NAME",
-            "database_name": "YOUR_DB_NAME",
-            "database_id": "YOUR_DB_ID",
-            "migrations_dir": "drizzle/migrations"
-        }
-    ]
-}
+Use Drizzle's SQLite schema definitions.
+
+```typescript copy filename="src/schema.ts"
+import { sql } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const posts = sqliteTable('posts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
 ```
-```toml
-name = "YOUR_PROJECT_NAME"
+
+#### Step 3 - Configure the Durable Object
+
+Export a SQLite-backed Durable Object class from your Worker.
+
+```toml copy filename="wrangler.toml"
+name = "d1-drizzle-app"
 main = "src/index.ts"
-compatibility_date = "2022-11-07"
-node_compat = true
+compatibility_date = "2026-06-13"
 
-[[ d1_databases ]]
-binding = "BINDING_NAME"
-database_name = "YOUR_DB_NAME"
-database_id = "YOUR_DB_ID"
-migrations_dir = "drizzle/migrations"
+[exports.BlogDatabase]
+type = "durable_object"
+storage = "sqlite"
 ```
-</CodeTabs>
 
-Make your first D1 query:
-```typescript copy
-import { drizzle } from 'drizzle-orm/d1';
+#### Step 4 - Use Drizzle inside the object
+
+Create the Drizzle client inside the Durable Object that owns the database. Route writes with `routingMode: "primary-only"` and pass bookmarks from write responses to later reads when you need read-your-writes consistency.
+
+```typescript copy filename="src/index.ts"
+import { desc } from 'drizzle-orm';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { posts } from './schema';
+import * as schema from './schema';
+
+type CreatePostInput = {
+  title: string;
+  body: string;
+};
 
 export interface Env {
-  <BINDING_NAME>: D1Database;
+  BlogDatabase: DurableObjectNamespace<BlogDatabase>;
+}
+
+export class BlogDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  async listPosts(bookmark: string | null = null) {
+    await this.db.d1.waitForBookmark(bookmark);
+
+    const rows = this.db
+      .select()
+      .from(posts)
+      .orderBy(desc(posts.id))
+      .limit(10)
+      .all();
+
+    return {
+      posts: rows,
+      bookmark: await this.db.d1.getCurrentBookmark(),
+    };
+  }
+
+  async createPost(input: CreatePostInput) {
+    const post = this.db.insert(posts).values(input).returning().get();
+
+    return {
+      post,
+      bookmark: await this.db.d1.getCurrentBookmark(),
+    };
+  }
 }
 
 export default {
-  async fetch(request: Request, env: Env) {
-    const db = drizzle(env.<BINDING_NAME>);
-    const result = await db.select().from(users).all()
-    return Response.json(result);
+  async fetch(request, env): Promise<Response> {
+    const url = new URL(request.url);
+    const objectName = `site:${url.hostname}`;
+
+    if (request.method === 'POST' && url.pathname === '/posts') {
+      const db = env.BlogDatabase.getByName(objectName, {
+        routingMode: 'primary-only',
+      });
+      const input = (await request.json()) as CreatePostInput;
+      const result = await db.createPost(input);
+
+      return Response.json(result.post, {
+        status: 201,
+        headers: { 'x-d1-bookmark': result.bookmark },
+      });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/posts') {
+      const db = env.BlogDatabase.getByName(objectName);
+      const result = await db.listPosts(request.headers.get('x-d1-bookmark'));
+
+      return Response.json(result.posts, {
+        headers: { 'x-d1-bookmark': result.bookmark },
+      });
+    }
+
+    return new Response('Not found', { status: 404 });
   },
-};
+} satisfies ExportedHandler<Env>;
 ```
+
+#### Step 5 - Configure Drizzle Kit
+
+Use `driver: "d1-object"` so Drizzle Kit generates bundled SQLite migrations for D1 application objects.
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './src/schema.ts',
+  dialect: 'sqlite',
+  driver: 'd1-object',
+  out: './drizzle',
+});
+```
+
+Generate migrations:
+
+```bash copy
+npx drizzle-kit generate
+```
+
+#### Step 6 - Apply migrations from the primary object
+
+Drizzle Kit can generate bundled migrations for D1 application objects, but SQL migrations must run inside the Durable Object that owns the database. Expose a primary-only method and call `applyDrizzleMigrations()`.
+
+```typescript copy filename="src/index.ts"
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import migrations from '../drizzle/migrations';
+import * as schema from './schema';
+
+export class BlogDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  applyMigrations() {
+    return this.applyDrizzleMigrations(migrations);
+  }
+}
+```
+
+Call that method through a primary-only stub from your deployment script, admin route, or migration Worker:
+
+```typescript copy
+const db = env.BlogDatabase.getByName('site:example.com', {
+  routingMode: 'primary-only',
+});
+
+await db.applyMigrations();
+```
+
+<Callout type="warning" title="Legacy D1 binding driver">
+The `drizzle-orm/d1` driver and `driver: "d1-http"` Drizzle Kit configuration are for the older D1 database binding model. Use them only for existing legacy D1 databases that have not moved to the D1 application object model.
+</Callout>
 
 #### What's next?
 

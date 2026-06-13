@@ -330,12 +330,9 @@ import { defineConfig } from 'drizzle-kit'
 
 export default defineConfig({
   dialect: "sqlite",
-  driver: "d1-http",
-  dbCredentials: {
-    accountId: "",
-    databaseId: "",
-    token: "",
-  }
+  driver: "d1-object",
+  schema: "./src/schema.ts",
+  out: "./drizzle"
 });
 ```
 ```ts
@@ -363,6 +360,10 @@ export default defineConfig({
 });
 ```
 </CodeTabs>
+
+<Callout type="info">
+For Cloudflare D1 application objects, `driver: "d1-object"` is used to generate bundled migrations. Drizzle Kit does not connect directly to a D1 application object for `push`, `pull`, `migrate`, or `studio`; apply generated migrations through a primary-only Durable Object method.
+</Callout>
 
 ### `migrations`
 <rem025/>

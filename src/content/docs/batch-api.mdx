@@ -1,5 +1,6 @@
 import Tab from '@mdx/Tab.astro';
 import Tabs from '@mdx/Tabs.astro';
+import Callout from '@mdx/Callout.astro';
 
 # Batch API
 
@@ -21,6 +22,11 @@ Batched statements are SQL transactions. If a statement in the sequence fails,
 then an error is returned for that specific statement, and it aborts or rolls back the entire sequence.
 
 Drizzle ORM provides APIs to run SQL statements in batch for `LibSQL`, `Neon` and `D1`:
+
+<Callout type="warning" title="Legacy D1 binding API">
+The D1 Batch API applies to the older `drizzle-orm/d1` database binding driver. New Cloudflare D1 application-object projects should use `drizzle-orm/d1-object`, where SQL runs locally inside the Durable Object and migrations run through object methods.
+</Callout>
+
 ```ts
 const batchResponse: BatchResponse = await db.batch([
 	db.insert(usersTable).values({ id: 1, name: 'John' }).returning({ id: usersTable.id }),

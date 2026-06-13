@@ -7,7 +7,7 @@ Example: Change `drizzle-kit push:mysql` to `drizzle-kit push`.
 
 #### 2. Update your `drizzle.config.ts` file:
  - Add `dialect` to `drizzle.config.ts`. It is now mandatory and can be `postgresql`, `mysql`, or `sqlite`.
- - Add `driver` to `drizzle.config.ts` ONLY if you are using `aws-data-api`, `turso`, `d1-http`(WIP), or `expo`. Otherwise, you can remove the `driver` from `drizzle.config.ts`.
+ - Add `driver` to `drizzle.config.ts` ONLY if you are using `aws-data-api`, `turso`, `d1-object`, legacy `d1-http`, or `expo`. Otherwise, you can remove the `driver` from `drizzle.config.ts`.
  - If you were using `connectionString` or `uri` in `dbCredentials`, you should now use `url`.
     
 ```ts
@@ -15,7 +15,7 @@ import { defineConfig } from "drizzle-kit"
 
 export default defineConfig({
     dialect: "sqlite", // "postgresql" | "mysql"
-    driver: "turso", // optional and used only if `aws-data-api`, `turso`, `d1-http`(WIP) or `expo` are used
+    driver: "turso", // optional and used only if `aws-data-api`, `turso`, `d1-object`, legacy `d1-http` or `expo` are used
     dbCredentials: {
         url: ""
     }
@@ -50,7 +50,8 @@ without specifying dialect. This param is moved to `drizzle.config.ts`
 - `driver` has become optional and will have a specific driver, each with a different configuration of `dbCredentials`. Available drivers are:
   - `aws-data-api`
   - `turso`
-  - `d1-http` - currently WIP
+  - `d1-object` - Cloudflare D1 application objects
+  - `d1-http` - legacy Cloudflare D1 HTTP API
   - `expo`
 - `url` - a unified parameter for the previously existing `connectionString` and `uri`.
 - `migrations` - a new object parameter to specify a custom table and schema for the migrate command:

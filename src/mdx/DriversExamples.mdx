@@ -1,6 +1,6 @@
 import CodeTabs from "@mdx/CodeTabs.astro"
 
-<CodeTabs items={["AWS Data API", "PGLite", "Cloudflare D1 HTTP"]}>
+<CodeTabs items={["AWS Data API", "PGLite", "Cloudflare D1", "Cloudflare D1 HTTP (legacy)"]}>
 ```ts {6}
 import { defineConfig } from "drizzle-kit";
 
@@ -24,11 +24,20 @@ export default defineConfig({
   driver: "pglite",
   dbCredentials: {
     // inmemory
-    url: ":memory:"
-    
+    url: ":memory:",
     // or database folder
-    url: "./database/"
+    // url: "./database/"
   },
+});
+```
+```ts {6}
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  dialect: "sqlite",
+  schema: "./src/schema.ts",
+  driver: "d1-object",
+  out: "./drizzle",
 });
 ```
 ```ts {6}

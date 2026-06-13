@@ -1,9 +1,10 @@
 ---
-title: Cloudflare D1 HTTP API with Drizzle Kit
+title: Legacy Cloudflare D1 HTTP API with Drizzle Kit
 slug: d1-http-with-drizzle-kit
 ---
 
 import Prerequisites from "@mdx/Prerequisites.astro";
+import Callout from "@mdx/Callout.astro";
 
 <Prerequisites>
 - [Drizzle Kit](/docs/kit-overview)
@@ -13,7 +14,11 @@ import Prerequisites from "@mdx/Prerequisites.astro";
 - You should have [Cloudflare account](https://dash.cloudflare.com/login), deployed [D1 database](https://developers.cloudflare.com/d1/) and token with D1 edit permissions
 </Prerequisites>
 
-To use Drizzle kit with Cloudflare D1 HTTP API, you need to configure the `drizzle.config.ts` file like this:
+<Callout type="warning" title="Legacy D1 binding flow">
+This guide is for existing D1 database binding projects that use the D1 HTTP API. For new Cloudflare D1 applications, start with [Drizzle and Cloudflare D1](/docs/connect-cloudflare-d1) and use `driver: "d1-object"`.
+</Callout>
+
+To use Drizzle Kit with the legacy Cloudflare D1 HTTP API, configure the `drizzle.config.ts` file like this:
 
 ```ts copy filename="drizzle.config.ts" {7, 9-11}
 import { defineConfig } from 'drizzle-kit';
@@ -37,8 +42,7 @@ You can find `accountId`, `databaseId` and `token` in [Cloudflare dashboard](htt
 2. To get `databaseId` open D1 database you want to connect to and copy **Database ID**.
 3. To get `token` go to **My profile** -> **API Tokens** and create token with D1 edit permissions.
 
-After you have configured `drizzle.config.ts` file, Drizzle Kit lets you run `migrate`, `push`, `introspect` and `studio` commands using Cloudflare D1 HTTP API.
+After you have configured `drizzle.config.ts` file, Drizzle Kit lets you run `migrate`, `push`, `introspect` and `studio` commands using the legacy Cloudflare D1 HTTP API.
 
 You can also use [Drizzle Chrome Extension](https://chromewebstore.google.com/detail/drizzle-studio/mjkojjodijpaneehkgmeckeljgkimnmd) to browse Cloudflare D1 database directly in their admin panel.
-
 

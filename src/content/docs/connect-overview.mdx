@@ -76,7 +76,7 @@ const db = drizzle({ client: pool });
 
 Drizzle is by design natively compatible with every **edge** or **serverless** runtime, whenever you'd need access to a serverless database - we've got you covered
 
-<CodeTabs items={["Neon HTTP", "Neon with websockets", "Vercel Postgres", "PlanetScale HTTP", "Cloudflare d1"]}>
+<CodeTabs items={["Neon HTTP", "Neon with websockets", "Vercel Postgres", "PlanetScale HTTP", "Cloudflare D1"]}>
 ```ts
 import { drizzle } from "drizzle-orm/neon-http";
 
@@ -98,9 +98,12 @@ import { drizzle } from "drizzle-orm/planetscale";
 const db = drizzle(process.env.DATABASE_URL);
 ```
 ```ts
-import { drizzle } from "drizzle-orm/d1";
+import { DrizzleD1Object, drizzle } from "drizzle-orm/d1-object";
+import * as schema from "./schema";
 
-const db = drizzle({ connection: env.DB });
+export class AppDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+}
 ```
 </CodeTabs>
 
