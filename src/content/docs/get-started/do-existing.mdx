@@ -35,13 +35,20 @@ drizzle-orm
   "name": "drizzle-durable-object-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
-  "compatibility_flags": ["experimental", "replica_routing"],
-  "exports": {
-    "NotesDatabase": {
-      "type": "durable_object",
-      "storage": "sqlite"
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NotesDatabase",
+        "class_name": "NotesDatabase"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["NotesDatabase"]
     }
-  }
+  ]
 }
 ```
 
@@ -49,7 +56,7 @@ drizzle-orm
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
-import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
 import { notes } from './schema';
 import * as schema from './schema';
 
@@ -58,6 +65,8 @@ export interface Env {
 }
 
 export class NotesDatabase extends DrizzleD1Object<Env> {
+  static override readonly primaryMethods = d1PrimaryMethods<NotesDatabase>()('createNote');
+
   db = drizzle(this.ctx, { schema });
 
   async createNote(body: string) {
@@ -70,13 +79,12 @@ export class NotesDatabase extends DrizzleD1Object<Env> {
 }
 ```
 
-Route known writes through a primary-only session:
+Call methods through an object session:
 
 ```typescript copy
+const id = env.NotesDatabase.idFromName('notes:default');
 const db = createD1ObjectSession<NotesDatabase>(
-  env.NotesDatabase.getByName('notes:default', {
-    routingMode: 'primary-only',
-  }),
+  env.NotesDatabase.get(id),
 );
 
 await db.client.createNote('hello');

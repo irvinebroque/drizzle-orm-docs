@@ -47,7 +47,7 @@ Drizzle Kit does not `pull` schema for `driver: "d1-object"`. If you are moving 
 
 #### Step 3 - Add Wrangler config
 
-Replace the old `[[d1_databases]]` binding for new `d1-object` code with an export.
+Replace the old `[[d1_databases]]` binding for new `d1-object` code with a SQLite-backed Durable Object binding.
 
 ```jsonc copy filename="wrangler.jsonc"
 {
@@ -55,13 +55,20 @@ Replace the old `[[d1_databases]]` binding for new `d1-object` code with an expo
   "name": "drizzle-d1-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
-  "compatibility_flags": ["experimental", "replica_routing"],
-  "exports": {
-    "AppDatabase": {
-      "type": "durable_object",
-      "storage": "sqlite"
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AppDatabase",
+        "class_name": "AppDatabase"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AppDatabase"]
     }
-  }
+  ]
 }
 ```
 
@@ -78,7 +85,7 @@ const db = drizzle(env.DB);
 New D1 code routes from the Worker to a database object. The Drizzle client and the methods that query it run inside that object:
 
 ```typescript copy filename="src/index.ts"
-import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
 import { eq } from 'drizzle-orm';
 import { users } from './schema';
 import * as schema from './schema';
@@ -89,6 +96,8 @@ export interface Env {
 
 // This class is the database. Drizzle runs here, inside the Durable Object.
 export class AppDatabase extends DrizzleD1Object<Env> {
+  static override readonly primaryMethods = d1PrimaryMethods<AppDatabase>()('createUser');
+
   db = drizzle(this.ctx, { schema });
 
   async findUser(email: string) {
@@ -104,21 +113,17 @@ export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     const objectName = `tenant:${url.hostname}`;
+    const id = env.AppDatabase.idFromName(objectName);
 
     if (request.method === 'POST') {
       // Get the database object for this tenant and call methods on it.
-      const db = createD1ObjectSession<AppDatabase>(
-        env.AppDatabase.getByName(objectName, {
-          routingMode: 'primary-only',
-        }),
-      );
+      const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.get(id));
       const user = await db.client.createUser(await request.json());
 
       return Response.json(user, { status: 201 });
     }
 
-    // Default routing can use a nearby read replica.
-    const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.getByName(objectName));
+    const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.get(id));
     const user = await db.client.findUser(url.searchParams.get('email') ?? '');
 
     return Response.json(user);
@@ -163,12 +168,11 @@ export class AppDatabase extends DrizzleD1Object<Env> {
 }
 ```
 
-Call the migration method through a primary-only stub:
+Call the migration method through the object stub:
 
 ```typescript copy
-const db = env.AppDatabase.getByName('tenant:example.com', {
-  routingMode: 'primary-only',
-});
+const id = env.AppDatabase.idFromName('tenant:example.com');
+const db = env.AppDatabase.get(id);
 
 await db.applyMigrations();
 ```

@@ -42,13 +42,20 @@ export const posts = sqliteTable('posts', {
   "name": "d1-drizzle-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
-  "compatibility_flags": ["experimental", "replica_routing"],
-  "exports": {
-    "BlogDatabase": {
-      "type": "durable_object",
-      "storage": "sqlite"
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BlogDatabase",
+        "class_name": "BlogDatabase"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BlogDatabase"]
     }
-  }
+  ]
 }
 ```
 
@@ -58,7 +65,7 @@ The Worker routes each request to a database object. The Drizzle client and the 
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
-import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
 import { posts } from './schema';
 import * as schema from './schema';
 
@@ -73,6 +80,8 @@ export interface Env {
 
 // This class is the database. Drizzle runs here, inside the Durable Object.
 export class BlogDatabase extends DrizzleD1Object<Env> {
+  static override readonly primaryMethods = d1PrimaryMethods<BlogDatabase>()('createPost');
+
   db = drizzle(this.ctx, { schema });
 
   async listPosts() {
@@ -93,14 +102,11 @@ export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     const objectName = `site:${url.hostname}`;
+    const id = env.BlogDatabase.idFromName(objectName);
 
     if (request.method === 'POST' && url.pathname === '/posts') {
       // Get the database object for this site and call methods on it.
-      const db = createD1ObjectSession<BlogDatabase>(
-        env.BlogDatabase.getByName(objectName, {
-          routingMode: 'primary-only',
-        }),
-      );
+      const db = createD1ObjectSession<BlogDatabase>(env.BlogDatabase.get(id));
       const input = (await request.json()) as CreatePostInput;
       const post = await db.client.createPost(input);
 
@@ -108,8 +114,7 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/posts') {
-      // Default routing can use a nearby read replica.
-      const db = createD1ObjectSession<BlogDatabase>(env.BlogDatabase.getByName(objectName));
+      const db = createD1ObjectSession<BlogDatabase>(env.BlogDatabase.get(id));
       const posts = await db.client.listPosts();
 
       return Response.json(posts);
@@ -159,12 +164,11 @@ export class BlogDatabase extends DrizzleD1Object<Env> {
 }
 ```
 
-Call the method through a primary-only stub:
+Call the method through the object stub:
 
 ```typescript copy
-const db = env.BlogDatabase.getByName('site:example.com', {
-  routingMode: 'primary-only',
-});
+const id = env.BlogDatabase.idFromName('site:example.com');
+const db = env.BlogDatabase.get(id);
 
 await db.applyMigrations();
 ```

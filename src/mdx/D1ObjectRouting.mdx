@@ -2,10 +2,11 @@
 
 The Worker receives HTTP requests and routes them to a database object. It does not create the Drizzle client itself.
 
-When the Worker calls `env.YourDatabase.getByName(objectName)`, it gets a Durable Object stub for one logical database. Wrapping that stub with `createD1ObjectSession()` gives you a typed client for the methods on that database object:
+When the Worker calls `env.YourDatabase.idFromName(objectName)` and `env.YourDatabase.get(id)`, it gets a Durable Object stub for one logical database. Wrapping that stub with `createD1ObjectSession()` gives you a typed client for the methods on that database object:
 
 ```typescript
-const stub = env.YourDatabase.getByName(objectName);
+const id = env.YourDatabase.idFromName(objectName);
+const stub = env.YourDatabase.get(id);
 const db = createD1ObjectSession<YourDatabase>(stub);
 
 const result = await db.client.someApplicationMethod();
@@ -23,13 +24,39 @@ export class YourDatabase extends DrizzleD1Object<Env> {
 }
 ```
 
-#### Why route reads and writes differently?
+#### How writes reach the primary
 
-With this setup, Cloudflare can keep read replicas close to users. The primary can read and write. Replicas are read-only, but they can serve read traffic without sending every request back to the primary.
+With this setup, Cloudflare can keep read replicas close to users. `DrizzleD1Object` enables read replication by default on the primary object. The primary can read and write, while replicas are read-only.
 
-Use `routingMode: 'primary-only'` when a request will write, run migrations, or otherwise must reach the primary. Use default routing for read-only requests so Cloudflare can route to the closest database instance that can serve the query.
+Mark write methods with `d1PrimaryMethods()` so calls that land on a replica forward to the primary before your method body runs:
 
-In these examples, `POST` uses `primary-only` and `GET` uses default routing. In your app, choose routing based on what the method does, not just the HTTP verb.
+```typescript copy
+import { DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
+
+export class YourDatabase extends DrizzleD1Object<Env> {
+  static override readonly primaryMethods = d1PrimaryMethods<YourDatabase>()('createUser');
+
+  db = drizzle(this.ctx, { schema });
+
+  async createUser(input: typeof users.$inferInsert) {
+    return this.db.insert(users).values(input).returning().get();
+  }
+}
+```
+
+Unmarked writes and transactions throw on replicas instead of being query-forwarded. `applyDrizzleMigrations()` already forwards migrations to the primary. Raw SQL is write-classified by default; use `db.d1.readAll()`, `db.d1.readGet()`, or `db.d1.readValues()` for explicit raw reads that may run on replicas.
+
+To disable read replicas for an object, pass `readReplication: false` to the base class:
+
+```typescript copy
+export class YourDatabase extends DrizzleD1Object<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env, { readReplication: false });
+  }
+
+  db = drizzle(this.ctx, { schema });
+}
+```
 
 #### When to use bookmarks
 
@@ -39,7 +66,7 @@ You do not pass bookmarks into your object methods. Pass the incoming bookmark t
 
 ```typescript copy
 const db = createD1ObjectSession<YourDatabase>(
-  env.YourDatabase.getByName(objectName),
+  env.YourDatabase.get(env.YourDatabase.idFromName(objectName)),
   { bookmark: request.headers.get('x-d1-bookmark') },
 );
 
@@ -51,3 +78,5 @@ return Response.json(result, {
 ```
 
 Omit the bookmark option and response header when stale reads are acceptable for that route.
+
+Calls through one `createD1ObjectSession()` are serialized so each call uses the latest bookmark from the previous call. Use separate sessions for intentionally independent request chains.

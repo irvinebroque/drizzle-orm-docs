@@ -41,13 +41,20 @@ export const messages = sqliteTable('messages', {
   "name": "durable-object-drizzle-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
-  "compatibility_flags": ["experimental", "replica_routing"],
-  "exports": {
-    "ChatRoom": {
-      "type": "durable_object",
-      "storage": "sqlite"
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ChatRoom",
+        "class_name": "ChatRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ChatRoom"]
     }
-  }
+  ]
 }
 ```
 
@@ -55,7 +62,7 @@ export const messages = sqliteTable('messages', {
 
 ```typescript copy filename="src/index.ts"
 import { desc, eq } from 'drizzle-orm';
-import { createD1ObjectSession, DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
 import { messages } from './schema';
 import * as schema from './schema';
 
@@ -69,6 +76,8 @@ export interface Env {
 }
 
 export class ChatRoom extends DrizzleD1Object<Env> {
+  static override readonly primaryMethods = d1PrimaryMethods<ChatRoom>()('createMessage');
+
   db = drizzle(this.ctx, { schema });
 
   async createMessage(input: CreateMessageInput) {
@@ -91,13 +100,10 @@ export default {
     const url = new URL(request.url);
     const roomId = url.searchParams.get('roomId') ?? 'general';
     const objectName = `room:${roomId}`;
+    const id = env.ChatRoom.idFromName(objectName);
 
     if (request.method === 'POST' && url.pathname === '/messages') {
-      const room = createD1ObjectSession<ChatRoom>(
-        env.ChatRoom.getByName(objectName, {
-          routingMode: 'primary-only',
-        }),
-      );
+      const room = createD1ObjectSession<ChatRoom>(env.ChatRoom.get(id));
       const input = (await request.json()) as CreateMessageInput;
       const message = await room.client.createMessage({ ...input, roomId });
 
@@ -105,7 +111,7 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/messages') {
-      const room = createD1ObjectSession<ChatRoom>(env.ChatRoom.getByName(objectName));
+      const room = createD1ObjectSession<ChatRoom>(env.ChatRoom.get(id));
       const messages = await room.client.listMessages(roomId);
 
       return Response.json(messages);
@@ -153,12 +159,11 @@ export class ChatRoom extends DrizzleD1Object<Env> {
 }
 ```
 
-Call that method through a primary-only stub:
+Call that method through the object stub:
 
 ```typescript copy
-const room = env.ChatRoom.getByName('room:general', {
-  routingMode: 'primary-only',
-});
+const id = env.ChatRoom.idFromName('room:general');
+const room = env.ChatRoom.get(id);
 
 await room.applyMigrations();
 ```
