@@ -1,6 +1,5 @@
 import Npm from '@mdx/Npm.astro';
 import Npx from '@mdx/Npx.astro';
-import Callout from '@mdx/Callout.astro';
 import Prerequisites from "@mdx/Prerequisites.astro";
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 
@@ -14,11 +13,7 @@ import Breadcrumbs from '@mdx/Breadcrumbs.astro';
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
-Start new Cloudflare D1 applications with `drizzle-orm/d1-object`. Your Worker routes requests to the right Durable Object, and Drizzle runs inside the object that owns the SQLite database.
-
-<Callout type="info" title="Recommended path">
-Use this guide for new D1 applications. The older `drizzle-orm/d1` database binding driver and `driver: "d1-http"` Drizzle Kit configuration are legacy paths for existing D1 binding projects.
-</Callout>
+Use `drizzle-orm/d1-object` for new Cloudflare D1 applications.
 
 #### Step 1 - Install required packages
 
@@ -156,7 +151,7 @@ npx drizzle-kit generate
 
 #### Step 7 - Apply migrations from the object
 
-SQL migrations for D1 application objects run inside the Durable Object on the primary. Add an object method that calls `applyDrizzleMigrations()`.
+Run generated migrations inside the Durable Object.
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';

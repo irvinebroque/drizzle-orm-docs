@@ -1,6 +1,5 @@
 import Npm from '@mdx/Npm.astro';
 import Npx from '@mdx/Npx.astro';
-import Callout from '@mdx/Callout.astro';
 import Prerequisites from "@mdx/Prerequisites.astro";
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 
@@ -13,11 +12,7 @@ import Breadcrumbs from '@mdx/Breadcrumbs.astro';
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
-Use `drizzle-orm/d1-object` for new SQL-backed Durable Objects. The adapter creates Drizzle from the Durable Object context, configures D1 read replication, and exposes bookmark helpers for read consistency.
-
-<Callout type="info" title="Recommended adapter">
-Start with `drizzle-orm/d1-object`. The older `drizzle-orm/durable-sqlite` driver is covered at the end of this guide for existing low-level Durable Objects SQLite applications.
-</Callout>
+Use `drizzle-orm/d1-object` for new SQL-backed Durable Objects.
 
 #### Step 1 - Install required packages
 
@@ -147,7 +142,7 @@ export class NotesDatabase extends DrizzleD1Object<Env> {
 
 #### Older `durable-sqlite` driver
 
-Use `driver: "durable-sqlite"` only for existing low-level Durable Objects SQLite applications. It does not provide the D1 object adapter's read replication setup, bookmark helpers, or primary migration forwarding.
+Existing low-level SQLite Durable Objects apps can keep using `driver: "durable-sqlite"`.
 
 ```typescript copy filename="drizzle.config.ts"
 import { defineConfig } from 'drizzle-kit';

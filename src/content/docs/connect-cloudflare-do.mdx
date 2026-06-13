@@ -1,5 +1,4 @@
 import Npm from "@mdx/Npm.astro";
-import Callout from '@mdx/Callout.astro';
 import WhatsNextPostgres from "@mdx/WhatsNextPostgres.astro";
 import Prerequisites from "@mdx/Prerequisites.astro";
 
@@ -11,11 +10,7 @@ import Prerequisites from "@mdx/Prerequisites.astro";
 - Cloudflare SQLite storage - [read here](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
 </Prerequisites>
 
-Use Drizzle with Cloudflare Durable Objects through the `drizzle-orm/d1-object` adapter. This is the recommended Durable Objects path for SQL-backed applications: the Durable Object owns the SQLite database, Drizzle runs inside the object, and the adapter handles D1 read replication and bookmark helpers.
-
-<Callout type="info" title="Recommended Durable Objects path">
-Start with `drizzle-orm/d1-object` for SQL-backed Durable Objects. The older `drizzle-orm/durable-sqlite` driver is still available for existing low-level Durable Objects SQLite applications and is covered later on this page.
-</Callout>
+Use `drizzle-orm/d1-object` for SQL-backed Durable Objects. Create the Drizzle client inside the object that owns SQLite storage.
 
 #### Step 1 - Install packages
 
@@ -25,8 +20,6 @@ drizzle-orm
 </Npm>
 
 #### Step 2 - Define your schema
-
-Use Drizzle's SQLite schema definitions.
 
 ```typescript copy filename="src/schema.ts"
 import { sql } from 'drizzle-orm';
@@ -53,8 +46,6 @@ storage = "sqlite"
 ```
 
 #### Step 4 - Use Drizzle inside the Durable Object
-
-Create the Drizzle client from `this.ctx` inside the Durable Object. Use primary-only routing for methods that write, and pass bookmarks back to callers when later reads need to observe those writes.
 
 ```typescript copy filename="src/index.ts"
 import { desc, eq } from 'drizzle-orm';
@@ -139,8 +130,6 @@ export default {
 
 #### Step 5 - Configure Drizzle Kit
 
-Use `driver: "d1-object"` so Drizzle Kit generates bundled SQLite migrations for your Durable Object.
-
 ```typescript copy filename="drizzle.config.ts"
 import { defineConfig } from 'drizzle-kit';
 
@@ -160,7 +149,7 @@ npx drizzle-kit generate
 
 #### Step 6 - Apply migrations from the object
 
-SQL migrations must run inside the Durable Object that owns the database. Add a primary-only object method that calls `applyDrizzleMigrations()`.
+Run generated migrations inside the Durable Object.
 
 ```typescript copy filename="src/index.ts"
 import migrations from '../drizzle/migrations';
@@ -186,7 +175,7 @@ await room.applyMigrations();
 
 #### Older `durable-sqlite` driver
 
-Use `drizzle-orm/durable-sqlite` only for existing low-level Durable Objects SQLite applications that are not using the D1 object adapter.
+Existing low-level SQLite Durable Objects apps can keep using `drizzle-orm/durable-sqlite`.
 
 ```typescript copy filename="src/index.ts"
 import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
