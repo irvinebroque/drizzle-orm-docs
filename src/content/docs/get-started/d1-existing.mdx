@@ -44,7 +44,7 @@ export const users = sqliteTable('users', {
 
 Drizzle Kit does not `pull` schema for `driver: "d1-object"`. If you are moving from a legacy D1 binding database, keep using the legacy flow for that database until you have ported the schema and data.
 
-#### Step 3 - Configure D1
+#### Step 3 - Add Wrangler config
 
 Replace the old `[[d1_databases]]` binding for new `d1-object` code with an export.
 
