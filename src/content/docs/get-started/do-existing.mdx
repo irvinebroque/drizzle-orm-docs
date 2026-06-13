@@ -3,6 +3,7 @@ import Npx from "@mdx/Npx.astro";
 import Callout from '@mdx/Callout.astro';
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 import Prerequisites from "@mdx/Prerequisites.astro";
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 <Breadcrumbs/>
 
@@ -34,6 +35,7 @@ drizzle-orm
   "name": "drizzle-durable-object-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
+  "compatibility_flags": ["experimental", "replica_routing"],
   "exports": {
     "NotesDatabase": {
       "type": "durable_object",
@@ -79,6 +81,8 @@ const db = createD1ObjectSession<NotesDatabase>(
 
 await db.client.createNote('hello');
 ```
+
+<D1ObjectRouting />
 
 #### Step 4 - Configure Drizzle Kit
 

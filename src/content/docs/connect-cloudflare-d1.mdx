@@ -2,6 +2,7 @@ import Npm from "@mdx/Npm.astro";
 import Callout from '@mdx/Callout.astro';
 import WhatsNextPostgres from "@mdx/WhatsNextPostgres.astro";
 import Prerequisites from "@mdx/Prerequisites.astro";
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 # Drizzle \<\> Cloudflare D1
 
@@ -41,6 +42,7 @@ export const posts = sqliteTable('posts', {
   "name": "d1-drizzle-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
+  "compatibility_flags": ["experimental", "replica_routing"],
   "exports": {
     "BlogDatabase": {
       "type": "durable_object",
@@ -112,6 +114,8 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 ```
+
+<D1ObjectRouting />
 
 #### Step 5 - Configure Drizzle Kit
 

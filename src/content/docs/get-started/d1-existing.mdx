@@ -3,6 +3,7 @@ import Npx from "@mdx/Npx.astro";
 import Callout from '@mdx/Callout.astro';
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
 import Prerequisites from "@mdx/Prerequisites.astro";
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 <Breadcrumbs/>
 
@@ -54,6 +55,7 @@ Replace the old `[[d1_databases]]` binding for new `d1-object` code with an expo
   "name": "drizzle-d1-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
+  "compatibility_flags": ["experimental", "replica_routing"],
   "exports": {
     "AppDatabase": {
       "type": "durable_object",
@@ -120,6 +122,8 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 ```
+
+<D1ObjectRouting />
 
 #### Step 5 - Configure Drizzle Kit
 

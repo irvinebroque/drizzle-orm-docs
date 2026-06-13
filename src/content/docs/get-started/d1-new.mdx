@@ -2,6 +2,7 @@ import Npm from '@mdx/Npm.astro';
 import Npx from '@mdx/Npx.astro';
 import Prerequisites from "@mdx/Prerequisites.astro";
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 <Breadcrumbs/>
 
@@ -43,6 +44,7 @@ export const users = sqliteTable('users', {
   "name": "drizzle-d1-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
+  "compatibility_flags": ["experimental", "replica_routing"],
   "exports": {
     "AppDatabase": {
       "type": "durable_object",
@@ -111,6 +113,8 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 ```
+
+<D1ObjectRouting />
 
 #### Step 5 - Generate wrangler types
 

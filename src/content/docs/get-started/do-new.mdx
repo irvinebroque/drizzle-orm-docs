@@ -2,6 +2,7 @@ import Npm from '@mdx/Npm.astro';
 import Npx from '@mdx/Npx.astro';
 import Prerequisites from "@mdx/Prerequisites.astro";
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 <Breadcrumbs/>
 
@@ -42,6 +43,7 @@ export const notes = sqliteTable('notes', {
   "name": "drizzle-durable-object-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-13",
+  "compatibility_flags": ["experimental", "replica_routing"],
   "exports": {
     "NotesDatabase": {
       "type": "durable_object",
@@ -98,6 +100,8 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 ```
+
+<D1ObjectRouting />
 
 #### Step 5 - Configure Drizzle Kit
 

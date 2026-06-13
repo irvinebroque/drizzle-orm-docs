@@ -1,0 +1,28 @@
+#### Why route reads and writes differently?
+
+With this setup, Cloudflare can keep read replicas close to users. The primary can read and write. Replicas are read-only, but they can serve read traffic without sending every request back to the primary.
+
+Use `routingMode: 'primary-only'` when a request will write, run migrations, or otherwise must reach the primary. Use default routing for read-only requests so Cloudflare can route to the closest database instance that can serve the query.
+
+In these examples, `POST` uses `primary-only` and `GET` uses default routing. In your app, choose routing based on what the method does, not just the HTTP verb.
+
+#### When to use bookmarks
+
+A bookmark is an opaque marker for a point in the object's write history. Use one when a client writes data and a later request must read at least that state, even if the read is served by a replica.
+
+You do not pass bookmarks into your object methods. Pass the incoming bookmark to `createD1ObjectSession()` and return the session's updated bookmark:
+
+```typescript copy
+const db = createD1ObjectSession<YourDatabase>(
+  env.YourDatabase.getByName(objectName),
+  { bookmark: request.headers.get('x-d1-bookmark') },
+);
+
+const result = await db.client.someReadMethod();
+
+return Response.json(result, {
+  headers: { 'x-d1-bookmark': db.getBookmark() ?? '' },
+});
+```
+
+Omit the bookmark option and response header when stale reads are acceptable for that route.
