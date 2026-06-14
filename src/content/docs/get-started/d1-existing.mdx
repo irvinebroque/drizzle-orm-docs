@@ -82,11 +82,11 @@ import { drizzle } from 'drizzle-orm/d1';
 const db = drizzle(env.DB);
 ```
 
-New D1 code routes from the Worker to a database object. The Drizzle client and the methods that query it run inside that object:
+New D1 code routes from the Worker to a database object and wraps the object stub with `drizzle()`. You keep Drizzle's normal query syntax in the Worker, while SQL executes inside that object:
 
 ```typescript copy filename="src/index.ts"
-import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
 import { eq } from 'drizzle-orm';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { users } from './schema';
 import * as schema from './schema';
 
@@ -96,17 +96,7 @@ export interface Env {
 
 // This class is the database. Drizzle runs here, inside the Durable Object.
 export class AppDatabase extends DrizzleD1Object<Env> {
-  static override readonly primaryMethods = d1PrimaryMethods<AppDatabase>()('createUser');
-
   db = drizzle(this.ctx, { schema });
-
-  async findUser(email: string) {
-    return this.db.select().from(users).where(eq(users.email, email)).get();
-  }
-
-  async createUser(input: typeof users.$inferInsert) {
-    return this.db.insert(users).values(input).returning().get();
-  }
 }
 
 export default {
@@ -114,17 +104,20 @@ export default {
     const url = new URL(request.url);
     const objectName = `tenant:${url.hostname}`;
     const id = env.AppDatabase.idFromName(objectName);
+    const db = drizzle<AppDatabase, typeof schema>(env.AppDatabase.get(id), { schema });
 
     if (request.method === 'POST') {
-      // Get the database object for this tenant and call methods on it.
-      const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.get(id));
-      const user = await db.client.createUser(await request.json());
+      const input = (await request.json()) as typeof users.$inferInsert;
+      const user = await db.insert(users).values(input).returning().get();
 
       return Response.json(user, { status: 201 });
     }
 
-    const db = createD1ObjectSession<AppDatabase>(env.AppDatabase.get(id));
-    const user = await db.client.findUser(url.searchParams.get('email') ?? '');
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, url.searchParams.get('email') ?? ''))
+      .get();
 
     return Response.json(user);
   },
@@ -168,13 +161,13 @@ export class AppDatabase extends DrizzleD1Object<Env> {
 }
 ```
 
-Call the migration method through the object stub:
+Call the migration method through the remote database:
 
 ```typescript copy
 const id = env.AppDatabase.idFromName('tenant:example.com');
-const db = env.AppDatabase.get(id);
+const db = drizzle<AppDatabase>(env.AppDatabase.get(id));
 
-await db.applyMigrations();
+await db.d1.client.applyMigrations();
 ```
 
 #### Step 7 - Generate types and run locally

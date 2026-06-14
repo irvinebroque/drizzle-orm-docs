@@ -64,7 +64,7 @@ export const notes = sqliteTable('notes', {
 
 ```typescript copy filename="src/index.ts"
 import { desc } from 'drizzle-orm';
-import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { notes } from './schema';
 import * as schema from './schema';
 
@@ -73,36 +73,25 @@ export interface Env {
 }
 
 export class NotesDatabase extends DrizzleD1Object<Env> {
-  static override readonly primaryMethods = d1PrimaryMethods<NotesDatabase>()('createNote');
-
   db = drizzle(this.ctx, { schema });
-
-  async createNote(body: string) {
-    return this.db.insert(notes).values({ body }).returning().get();
-  }
-
-  async listNotes() {
-    return this.db.select().from(notes).orderBy(desc(notes.id)).limit(20).all();
-  }
 }
 
 export default {
   async fetch(request, env): Promise<Response> {
     const objectName = 'notes:default';
     const id = env.NotesDatabase.idFromName(objectName);
+    const db = drizzle<NotesDatabase, typeof schema>(env.NotesDatabase.get(id), { schema });
 
     if (request.method === 'POST') {
-      const db = createD1ObjectSession<NotesDatabase>(env.NotesDatabase.get(id));
       const { body } = (await request.json()) as { body: string };
-      const note = await db.client.createNote(body);
+      const note = await db.insert(notes).values({ body }).returning().get();
 
       return Response.json(note, { status: 201 });
     }
 
-    const db = createD1ObjectSession<NotesDatabase>(env.NotesDatabase.get(id));
-    const notes = await db.client.listNotes();
+    const latestNotes = await db.select().from(notes).orderBy(desc(notes.id)).limit(20).all();
 
-    return Response.json(notes);
+    return Response.json(latestNotes);
   },
 } satisfies ExportedHandler<Env>;
 ```

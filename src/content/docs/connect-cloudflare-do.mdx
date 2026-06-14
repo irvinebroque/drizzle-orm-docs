@@ -62,7 +62,7 @@ export const messages = sqliteTable('messages', {
 
 ```typescript copy filename="src/index.ts"
 import { desc, eq } from 'drizzle-orm';
-import { createD1ObjectSession, DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
 import { messages } from './schema';
 import * as schema from './schema';
 
@@ -76,23 +76,7 @@ export interface Env {
 }
 
 export class ChatRoom extends DrizzleD1Object<Env> {
-  static override readonly primaryMethods = d1PrimaryMethods<ChatRoom>()('createMessage');
-
   db = drizzle(this.ctx, { schema });
-
-  async createMessage(input: CreateMessageInput) {
-    return this.db.insert(messages).values(input).returning().get();
-  }
-
-  async listMessages(roomId: string) {
-    return this.db
-      .select()
-      .from(messages)
-      .where(eq(messages.roomId, roomId))
-      .orderBy(desc(messages.id))
-      .limit(50)
-      .all();
-  }
 }
 
 export default {
@@ -101,20 +85,25 @@ export default {
     const roomId = url.searchParams.get('roomId') ?? 'general';
     const objectName = `room:${roomId}`;
     const id = env.ChatRoom.idFromName(objectName);
+    const room = drizzle<ChatRoom, typeof schema>(env.ChatRoom.get(id), { schema });
 
     if (request.method === 'POST' && url.pathname === '/messages') {
-      const room = createD1ObjectSession<ChatRoom>(env.ChatRoom.get(id));
       const input = (await request.json()) as CreateMessageInput;
-      const message = await room.client.createMessage({ ...input, roomId });
+      const message = await room.insert(messages).values({ ...input, roomId }).returning().get();
 
       return Response.json(message, { status: 201 });
     }
 
     if (request.method === 'GET' && url.pathname === '/messages') {
-      const room = createD1ObjectSession<ChatRoom>(env.ChatRoom.get(id));
-      const messages = await room.client.listMessages(roomId);
+      const latestMessages = await room
+        .select()
+        .from(messages)
+        .where(eq(messages.roomId, roomId))
+        .orderBy(desc(messages.id))
+        .limit(50)
+        .all();
 
-      return Response.json(messages);
+      return Response.json(latestMessages);
     }
 
     return new Response('Not found', { status: 404 });
@@ -159,13 +148,13 @@ export class ChatRoom extends DrizzleD1Object<Env> {
 }
 ```
 
-Call that method through the object stub:
+Call that method through the remote database:
 
 ```typescript copy
 const id = env.ChatRoom.idFromName('room:general');
-const room = env.ChatRoom.get(id);
+const room = drizzle<ChatRoom>(env.ChatRoom.get(id));
 
-await room.applyMigrations();
+await room.d1.client.applyMigrations();
 ```
 
 #### Older `durable-sqlite` driver
