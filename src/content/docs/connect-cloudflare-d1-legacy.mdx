@@ -1,0 +1,101 @@
+import Npm from "@mdx/Npm.astro";
+import Callout from '@mdx/Callout.astro';
+import WhatsNextPostgres from "@mdx/WhatsNextPostgres.astro";
+import Prerequisites from "@mdx/Prerequisites.astro";
+
+# Drizzle \<\> Cloudflare D1 database bindings
+
+<Prerequisites>
+- Database [connection basics](/docs/connect-overview) with Drizzle
+- Cloudflare D1 - [read here](https://developers.cloudflare.com/d1/)
+</Prerequisites>
+
+<Callout type="warning" title="Legacy D1 binding driver">
+This page is for existing Cloudflare D1 database binding projects that use `env.DB` and `drizzle-orm/d1`. For new Cloudflare D1 applications, start with [Drizzle and Cloudflare D1](/docs/connect-cloudflare-d1) and use `drizzle-orm/d1-object`.
+</Callout>
+
+#### Step 1 - Install packages
+
+<Npm>
+drizzle-orm
+-D drizzle-kit
+</Npm>
+
+#### Step 2 - Add a D1 binding
+
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "legacy-d1-drizzle-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "legacy-d1-db",
+      "database_id": "<database-id>",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ]
+}
+```
+
+#### Step 3 - Create a schema
+
+```typescript copy filename="src/schema.ts"
+import { sql } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const users = sqliteTable('users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+```
+
+#### Step 4 - Use the binding driver
+
+```typescript copy filename="src/index.ts"
+import { drizzle } from 'drizzle-orm/d1';
+import { users } from './schema';
+
+export interface Env {
+  DB: D1Database;
+}
+
+export default {
+  async fetch(_request, env): Promise<Response> {
+    const db = drizzle(env.DB);
+    const result = await db.select().from(users).all();
+
+    return Response.json(result);
+  },
+} satisfies ExportedHandler<Env>;
+```
+
+#### Step 5 - Configure Drizzle Kit
+
+Use `driver: 'd1-http'` when you need Drizzle Kit to connect to an existing D1 database through the legacy D1 HTTP API.
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './src/schema.ts',
+  out: './drizzle',
+  dialect: 'sqlite',
+  driver: 'd1-http',
+  dbCredentials: {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    databaseId: process.env.CLOUDFLARE_DATABASE_ID!,
+    token: process.env.CLOUDFLARE_D1_TOKEN!,
+  },
+});
+```
+
+For more Drizzle Kit details, see [Legacy Cloudflare D1 HTTP API with Drizzle Kit](/docs/guides/d1-http-with-drizzle-kit).
+
+#### What's next?
+
+<WhatsNextPostgres/>

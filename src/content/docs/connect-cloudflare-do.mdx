@@ -1,144 +1,203 @@
 import Npm from "@mdx/Npm.astro";
-import Callout from '@mdx/Callout.astro';
-import AnchorCards from '@mdx/AnchorCards.astro';
-import Steps from '@mdx/Steps.astro';
 import WhatsNextPostgres from "@mdx/WhatsNextPostgres.astro";
 import Prerequisites from "@mdx/Prerequisites.astro";
-import CodeTabs from "@mdx/CodeTabs.astro";
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
-# Drizzle \<\> Cloudflare Durable Objects SQLite
+# Drizzle \<\> Cloudflare Durable Objects
 
 <Prerequisites>
 - Database [connection basics](/docs/connect-overview) with Drizzle
-- **Cloudflare SQLite Durable Objects** - SQLite database embedded within a Durable Object - [read here](https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/#sqlite-storage-backend)
+- Cloudflare Durable Objects - [read here](https://developers.cloudflare.com/durable-objects/)
 </Prerequisites>
-  
-Drizzle ORM fully supports the Cloudflare Durable Objects database and Cloudflare Workers environment.
-We embrace SQL dialects and dialect specific drivers and syntax and mirror most popular 
-SQLite-like `all`, `get`, `values` and `run` query methods syntax.
 
-To setup project for your Cloudflare Durable Objects please refer to **[official docs.](https://developers.cloudflare.com/durable-objects)**
+Use `drizzle-orm/d1-object` for SQL-backed Durable Objects.
 
 #### Step 1 - Install packages
+
 <Npm>
 drizzle-orm
 -D drizzle-kit
 </Npm>
 
-#### Step 2 - Initialize the driver and make a query
+#### Step 2 - Define your schema
 
-You would need to have a `wrangler.toml` file for Durable Objects database and will look something like this:
-```toml {16-18,21-24}
-#:schema node_modules/wrangler/config-schema.json
-name = "sqlite-durable-objects"
-main = "src/index.ts"
-compatibility_date = "2024-11-12"
-compatibility_flags = [ "nodejs_compat" ]
+```typescript copy filename="src/schema.ts"
+import { sql } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-# Bind a Durable Object. Durable objects are a scale-to-zero compute primitive based on the actor model.
-# Durable Objects can live for as long as needed. Use these when you need a long-running "server", such as in realtime apps.
-# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#durable-objects
-[[durable_objects.bindings]]
-name = "MY_DURABLE_OBJECT"
-class_name = "MyDurableObject"
-
-# Durable Object migrations.
-# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#migrations
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["MyDurableObject"]
-
-# We need rules so we can import migrations in the next steps
-[[rules]] 
-type = "Text"
-globs = ["**/*.sql"]
-fallthrough = true
+export const messages = sqliteTable('messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  roomId: text('room_id').notNull(),
+  body: text('body').notNull(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
 ```
 
-Make your first Durable Objects SQLite query:
-```typescript copy
-/// <reference types="@cloudflare/workers-types" />
-import { drizzle, DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
-import { DurableObject } from 'cloudflare:workers'
-import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
-import migrations from '../drizzle/migrations';
-import { usersTable } from './db/schema';
+#### Step 3 - Add Wrangler config
 
-export class MyDurableObject extends DurableObject {
-	storage: DurableObjectStorage;
-	db: DrizzleSqliteDODatabase<any>;
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "durable-object-drizzle-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ChatRoom",
+        "class_name": "ChatRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ChatRoom"]
+    }
+  ]
+}
+```
 
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
-		this.storage = ctx.storage;
-		this.db = drizzle(this.storage, { logger: false });
+#### Step 4 - Use Drizzle inside the Durable Object
 
-		// Make sure all migrations complete before accepting queries.
-		// Otherwise you will need to run `this.migrate()` in any function
-		// that accesses the Drizzle database `this.db`.
-		ctx.blockConcurrencyWhile(async () => {
-			await this._migrate();
-		});
-	}
+```typescript copy filename="src/index.ts"
+import { desc, eq } from 'drizzle-orm';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { messages } from './schema';
+import * as schema from './schema';
 
-	async insertAndList(user: typeof usersTable.$inferInsert) {
-		await this.insert(user);
-		return this.select();
-	}
+type CreateMessageInput = {
+  roomId: string;
+  body: string;
+};
 
-	async insert(user: typeof usersTable.$inferInsert) {
-		await this.db.insert(usersTable).values(user);
-	}
+export interface Env {
+  ChatRoom: DurableObjectNamespace<ChatRoom>;
+}
 
-	async select() {
-		return this.db.select().from(usersTable);
-	}
-
-	async _migrate() {
-		migrate(this.db, migrations);
-	}
+export class ChatRoom extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
 }
 
 export default {
-	/**
-	 * This is the standard fetch handler for a Cloudflare Worker
-	 *
-	 * @param request - The request submitted to the Worker from the client
-	 * @param env - The interface to reference bindings declared in wrangler.toml
-	 * @param ctx - The execution context of the Worker
-	 * @returns The response to be sent back to the client
-	 */
-	async fetch(request: Request, env: Env): Promise<Response> {
-		const id: DurableObjectId = env.MY_DURABLE_OBJECT.idFromName('durable-object');
-		const stub = env.MY_DURABLE_OBJECT.get(id);
+  async fetch(request, env): Promise<Response> {
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get('roomId') ?? 'general';
+    const objectName = `room:${roomId}`;
+    const id = env.ChatRoom.idFromName(objectName);
+    const room = drizzle<ChatRoom, typeof schema>(env.ChatRoom.get(id), { schema });
 
-		// Option A - Maximum performance.
-		// Prefer to bundle all the database interaction within a single Durable Object call
-		// for maximum performance, since database access is fast within a DO.
-		const usersAll = await stub.insertAndList({
-			name: 'John',
-			age: 30,
-			email: 'john@example.com',
-		});
-		console.log('New user created. Getting all users from the database: ', users);
+    if (request.method === 'POST' && url.pathname === '/messages') {
+      const input = (await request.json()) as CreateMessageInput;
+      const message = await room.insert(messages).values({ ...input, roomId }).returning().get();
 
-		// Option B - Slow but maybe useful sometimes for debugging.
-		// You can also directly call individual Drizzle queries if they are exposed
-		// but keep in mind every query is a round-trip to the Durable Object instance.
-		await stub.insert({
-			name: 'John',
-			age: 30,
-			email: 'john@example.com',
-		});
-		console.log('New user created!');
-	
-		const users = await stub.select();
-		console.log('Getting all users from the database: ', users);
+      return Response.json(message, { status: 201 });
+    }
 
-		return Response.json(users);
-	}
+    if (request.method === 'GET' && url.pathname === '/messages') {
+      const latestMessages = await room
+        .select()
+        .from(messages)
+        .where(eq(messages.roomId, roomId))
+        .orderBy(desc(messages.id))
+        .limit(50)
+        .all();
+
+      return Response.json(latestMessages);
+    }
+
+    return new Response('Not found', { status: 404 });
+  },
+} satisfies ExportedHandler<Env>;
+```
+
+<D1ObjectRouting />
+
+#### Step 5 - Configure Drizzle Kit
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './src/schema.ts',
+  dialect: 'sqlite',
+  driver: 'd1-object',
+  out: './drizzle',
+});
+```
+
+Generate migrations:
+
+```bash copy
+npx drizzle-kit generate
+```
+
+#### Step 6 - Apply migrations from the object
+
+Run generated migrations through the object.
+
+```typescript copy filename="src/index.ts"
+import migrations from '../drizzle/migrations';
+
+export class ChatRoom extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  applyMigrations() {
+    return this.applyDrizzleMigrations(migrations);
+  }
 }
 ```
+
+Call that method through the remote database:
+
+```typescript copy
+const id = env.ChatRoom.idFromName('room:general');
+const room = drizzle<ChatRoom>(env.ChatRoom.get(id));
+
+await room.d1.client.applyMigrations();
+```
+
+#### Older `durable-sqlite` driver
+
+Existing low-level SQLite Durable Objects apps can keep using `drizzle-orm/durable-sqlite`.
+
+```typescript copy filename="src/index.ts"
+import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
+import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import { DurableObject } from 'cloudflare:workers';
+import migrations from '../drizzle/migrations';
+import { messages } from './schema';
+
+export class LegacyChatRoom extends DurableObject {
+  db: DrizzleSqliteDODatabase;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.db = drizzle(ctx.storage, { logger: false });
+  }
+
+  async listMessages() {
+    return this.db.select().from(messages);
+  }
+
+  async migrate() {
+    migrate(this.db, migrations);
+  }
+}
+```
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  out: './drizzle',
+  schema: './src/schema.ts',
+  dialect: 'sqlite',
+  driver: 'durable-sqlite',
+});
+```
+
+The older `durable-sqlite` driver is kept for legacy low-level SQLite integrations.
 
 #### What's next?
 

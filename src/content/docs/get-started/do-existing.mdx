@@ -1,334 +1,168 @@
-import Tab from '@mdx/Tab.astro';
-import Tabs from '@mdx/Tabs.astro';
 import Npm from "@mdx/Npm.astro";
+import Npx from "@mdx/Npx.astro";
 import Callout from '@mdx/Callout.astro';
-import Steps from '@mdx/Steps.astro';
-import AnchorCards from '@mdx/AnchorCards.astro';
 import Breadcrumbs from '@mdx/Breadcrumbs.astro';
-import CodeTabs from "@mdx/CodeTabs.astro";
 import Prerequisites from "@mdx/Prerequisites.astro";
-import IntrospectSQLite from '@mdx/get-started/sqlite/IntrospectSqlite.mdx';
-import FileStructure from '@mdx/get-started/FileStructure.mdx';
-import InstallPackages from '@mdx/get-started/InstallPackages.mdx';
-import SetupConfig from '@mdx/get-started/SetupConfig.mdx';
-import SetupEnv from '@mdx/get-started/SetupEnv.mdx';
-import TransferCode from '@mdx/get-started/TransferCode.mdx';
-import ApplyChanges from '@mdx/get-started/ApplyChanges.mdx';
-import RunFile from '@mdx/get-started/RunFile.mdx';
-import ConnectSQLiteCloud from '@mdx/get-started/sqlite/ConnectSQLiteCloud.mdx';
-import QueryDatabase from '@mdx/get-started/QueryDatabase.mdx';
-import QueryDatabaseUpdated from '@mdx/get-started/QueryDatabaseUpdated.mdx';
-import UpdateSchema from '@mdx/get-started/sqlite/UpdateSchema.mdx';
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 <Breadcrumbs/>
 
-# Get Started with Drizzle and SQLite Durable Objects in existing project
+# Add Drizzle to an existing SQLite Durable Objects project
 
 <Prerequisites>
-  - **dotenv** - package for managing environment variables - [read here](https://www.npmjs.com/package/dotenv)
-  - **tsx** - package for running TypeScript files - [read here](https://tsx.is/)
-  - **Cloudflare SQLite Durable Objects** - SQLite database embedded within a Durable Object - [read here](https://developers.cloudflare.com/durable-objects/api/sql-storage/)
+  - **Cloudflare Durable Objects** - [read here](https://developers.cloudflare.com/durable-objects/)
   - **wrangler** - Cloudflare Developer Platform command-line interface - [read here](https://developers.cloudflare.com/workers/wrangler)
 </Prerequisites>
 
-<FileStructure/>
+For existing SQL-backed Durable Objects projects, prefer `drizzle-orm/d1-object`.
 
-#### Step 1 - Install required package
-<InstallPackages lib=''/>
+<Callout type="info" title="Recommended adapter">
+Use `drizzle-orm/d1-object` for the durable object database path. Keep `drizzle-orm/durable-sqlite` only for existing low-level integrations that cannot move yet.
+</Callout>
 
-#### Step 2 - Setup wrangler.toml
+#### Step 1 - Install packages
 
-You would need to have a `wrangler.toml` file for D1 database and will look something like this:
-```toml
-#:schema node_modules/wrangler/config-schema.json
-name = "sqlite-durable-objects"
-main = "src/index.ts"
-compatibility_date = "2024-11-12"
-compatibility_flags = [ "nodejs_compat" ]
+<Npm>
+drizzle-orm
+-D drizzle-kit
+</Npm>
 
-# Bind a Durable Object. Durable objects are a scale-to-zero compute primitive based on the actor model.
-# Durable Objects can live for as long as needed. Use these when you need a long-running "server", such as in realtime apps.
-# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#durable-objects
-[[durable_objects.bindings]]
-name = "MY_DURABLE_OBJECT"
-class_name = "MyDurableObject"
+#### Step 2 - Add Wrangler config
 
-# Durable Object migrations.
-# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#migrations
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["MyDurableObject"]
-
-# We need rules so we can import migrations in the next steps
-[[rules]] 
-type = "Text"
-globs = ["**/*.sql"]
-fallthrough = true
+```jsonc copy filename="wrangler.jsonc"
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "drizzle-durable-object-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NotesDatabase",
+        "class_name": "NotesDatabase"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["NotesDatabase"]
+    }
+  ]
+}
 ```
 
-#### Step 3 - Setup Drizzle config file
+#### Step 3 - Create Drizzle from the Durable Object context
 
-**Drizzle config** - a configuration file that is used by [Drizzle Kit](/docs/kit-overview) and contains all the information about your database connection, migration folder and schema files.
+```typescript copy filename="src/index.ts"
+import { desc } from 'drizzle-orm';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { notes } from './schema';
+import * as schema from './schema';
 
-Create a `drizzle.config.ts` file in the root of your project and add the following content:
+export interface Env {
+  NotesDatabase: DurableObjectNamespace<NotesDatabase>;
+}
+
+export class NotesDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+}
+```
+
+Query through the remote Drizzle database:
+
+```typescript copy
+const id = env.NotesDatabase.idFromName('notes:default');
+const db = drizzle<NotesDatabase, typeof schema>(env.NotesDatabase.get(id), { schema });
+
+await db.insert(notes).values({ body: 'hello' }).run();
+
+const latestNotes = await db.select().from(notes).orderBy(desc(notes.id)).limit(20).all();
+```
+
+<D1ObjectRouting />
+
+#### Step 4 - Configure Drizzle Kit
 
 ```typescript copy filename="drizzle.config.ts"
-import 'dotenv/config';
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
   out: './drizzle',
-  schema: './src/db/schema.ts',
+  schema: './src/schema.ts',
+  dialect: 'sqlite',
+  driver: 'd1-object',
+});
+```
+
+Generate bundled migrations:
+
+```bash copy
+npx drizzle-kit generate
+```
+
+Apply them from an object method:
+
+```typescript copy filename="src/index.ts"
+import migrations from '../drizzle/migrations';
+
+export class NotesDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  applyMigrations() {
+    return this.applyDrizzleMigrations(migrations);
+  }
+}
+```
+
+#### Older `durable-sqlite` driver
+
+Existing applications that already use `drizzle-orm/durable-sqlite` can keep that path while migrating.
+
+```typescript copy filename="src/index.ts"
+import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
+import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import { DurableObject } from 'cloudflare:workers';
+import migrations from '../drizzle/migrations';
+import { notes } from './schema';
+
+export class LegacyNotesDatabase extends DurableObject {
+  db: DrizzleSqliteDODatabase;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.db = drizzle(ctx.storage, { logger: false });
+  }
+
+  async listNotes() {
+    return this.db.select().from(notes);
+  }
+
+  async migrate() {
+    migrate(this.db, migrations);
+  }
+}
+```
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  out: './drizzle',
+  schema: './src/schema.ts',
   dialect: 'sqlite',
   driver: 'durable-sqlite',
 });
 ```
-<Callout title='tips'>
-You can check [our tutorial](/docs/guides/d1-http-with-drizzle-kit) on how to get env variables from CloudFlare
-</Callout>
 
-#### Step 4 - Introspect your database
+Drizzle Kit cannot directly `push`, `pull`, `migrate`, or open `studio` against this driver. Generate migrations and apply them through object code.
 
-<IntrospectSQLite/>
+#### Step 5 - Generate types and run locally
 
-#### Step 5 - Transfer code to your actual schema file
+<Npx>
+wrangler types
+</Npx>
 
-<TransferCode/>
-
-#### Step 6 - Connect Drizzle ORM to the database
-
-```typescript copy
-import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
-import { DurableObject } from 'cloudflare:workers'
-
-export class MyDurableObject extends DurableObject {
-	storage: DurableObjectStorage;
-	db: DrizzleSqliteDODatabase;
-
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
-		this.storage = ctx.storage;
-		this.db = drizzle(this.storage, { logger: false });
-	}
-}
-```
-
-#### Step 7 - Query the database
-
-```typescript copy
-import { drizzle, DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
-import { DurableObject } from 'cloudflare:workers'
-import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
-import migrations from '../drizzle/migrations';
-import { usersTable } from './db/schema';
-
-export class MyDurableObject extends DurableObject {
-  storage: DurableObjectStorage;
-  db: DrizzleSqliteDODatabase<any>;
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    this.storage = ctx.storage;
-    this.db = drizzle(this.storage, { logger: false });
-
-    // Make sure all migrations complete before accepting queries.
-    // Otherwise you will need to run `this.migrate()` in any function
-    // that accesses the Drizzle database `this.db`.
-    ctx.blockConcurrencyWhile(async () => {
-      await this._migrate();
-    });
-  }
-
-  async insertAndList(user: typeof usersTable.$inferInsert) {
-    await this.insert(user);
-    return this.select();
-  }
-
-  async insert(user: typeof usersTable.$inferInsert) {
-    await this.db.insert(usersTable).values(user);
-  }
-
-  async select() {
-    return this.db.select().from(usersTable);
-  }
-
-  async _migrate() {
-    migrate(this.db, migrations);
-  }
-}
-
-export default {
-  /**
-   * This is the standard fetch handler for a Cloudflare Worker
-   *
-   * @param request - The request submitted to the Worker from the client
-   * @param env - The interface to reference bindings declared in wrangler.toml
-   * @param ctx - The execution context of the Worker
-   * @returns The response to be sent back to the client
-   */
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const id: DurableObjectId = env.MY_DURABLE_OBJECT.idFromName('durable-object');
-    const stub = env.MY_DURABLE_OBJECT.get(id);
-
-    // Option A - Maximum performance.
-    // Prefer to bundle all the database interaction within a single Durable Object call
-    // for maximum performance, since database access is fast within a DO.
-    const usersAll = await stub.insertAndList({
-      name: 'John',
-      age: 30,
-      email: 'john@example.com',
-    });
-    console.log('New user created. Getting all users from the database: ', users);
-    /*
-    const users: {
-      id: number;
-      name: string;
-      age: number;
-      email: string;
-      phone: string | null;
-    }[]
-    */
-
-    // Option B - Slow but maybe useful sometimes for debugging.
-    // You can also directly call individual Drizzle queries if they are exposed
-    // but keep in mind every query is a round-trip to the Durable Object instance.
-    await stub.insert({
-      name: 'John',
-      age: 30,
-      email: 'john@example.com',
-    });
-    console.log('New user created!');
-
-    const users = await stub.select();
-    console.log('Getting all users from the database: ', users);
-    /*
-    const users: {
-      id: number;
-      name: string;
-      age: number;
-      email: string;
-      phone: string | null;
-    }[]
-    */
-
-    return Response.json(users);
-  }
-}
-```
-
-#### Step 8 - Run index.ts file
-
-<RunFile/>
-
-#### Step 9 - Update your table schema (optional)
-
-<UpdateSchema/>
-
-#### Step 10 - Applying changes to the database (optional)
-
-<ApplyChanges />
-
-#### Step 11 - Query the database with a new field (optional)
-
-```typescript copy filename="src/index.ts"
-import { drizzle, DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
-import { DurableObject } from 'cloudflare:workers'
-import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
-import migrations from '../drizzle/migrations';
-import { usersTable } from './db/schema';
-
-export class MyDurableObject extends DurableObject {
-  storage: DurableObjectStorage;
-  db: DrizzleSqliteDODatabase<any>;
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    this.storage = ctx.storage;
-    this.db = drizzle(this.storage, { logger: false });
-
-    // Make sure all migrations complete before accepting queries.
-    // Otherwise you will need to run `this.migrate()` in any function
-    // that accesses the Drizzle database `this.db`.
-    ctx.blockConcurrencyWhile(async () => {
-      await this._migrate();
-    });
-  }
-
-  async insertAndList(user: typeof usersTable.$inferInsert) {
-    await this.insert(user);
-    return this.select();
-  }
-
-  async insert(user: typeof usersTable.$inferInsert) {
-    await this.db.insert(usersTable).values(user);
-  }
-
-  async select() {
-    return this.db.select().from(usersTable);
-  }
-
-  async _migrate() {
-    migrate(this.db, migrations);
-  }
-}
-
-export default {
-  /**
-   * This is the standard fetch handler for a Cloudflare Worker
-   *
-   * @param request - The request submitted to the Worker from the client
-   * @param env - The interface to reference bindings declared in wrangler.toml
-   * @param ctx - The execution context of the Worker
-   * @returns The response to be sent back to the client
-   */
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const id: DurableObjectId = env.MY_DURABLE_OBJECT.idFromName('durable-object');
-    const stub = env.MY_DURABLE_OBJECT.get(id);
-
-    // Option A - Maximum performance.
-    // Prefer to bundle all the database interaction within a single Durable Object call
-    // for maximum performance, since database access is fast within a DO.
-    const usersAll = await stub.insertAndList({
-      name: 'John',
-      age: 30,
-      email: 'john@example.com',
-      phone: '123-456-7890',
-    });
-    console.log('New user created. Getting all users from the database: ', users);
-    /*
-    const users: {
-      id: number;
-      name: string;
-      age: number;
-      email: string;
-      phone: string | null;
-    }[]
-    */
-
-    // Option B - Slow but maybe useful sometimes for debugging.
-    // You can also directly call individual Drizzle queries if they are exposed
-    // but keep in mind every query is a round-trip to the Durable Object instance.
-    await stub.insert({
-      name: 'John',
-      age: 30,
-      email: 'john@example.com',
-      phone: '123-456-7890',
-    });
-    console.log('New user created!');
-
-    const users = await stub.select();
-    console.log('Getting all users from the database: ', users);
-    /*
-    const users: {
-      id: number;
-      name: string;
-      age: number;
-      email: string;
-      phone: string | null;
-    }[]
-    */
-
-    return Response.json(users);
-  }
-}
-```
+<Npx>
+wrangler dev
+</Npx>

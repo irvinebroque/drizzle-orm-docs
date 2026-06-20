@@ -1,86 +1,169 @@
 import Npm from "@mdx/Npm.astro";
 import Callout from '@mdx/Callout.astro';
-import AnchorCards from '@mdx/AnchorCards.astro';
-import Steps from '@mdx/Steps.astro';
 import WhatsNextPostgres from "@mdx/WhatsNextPostgres.astro";
 import Prerequisites from "@mdx/Prerequisites.astro";
-import CodeTabs from "@mdx/CodeTabs.astro";
+import D1ObjectRouting from "@mdx/D1ObjectRouting.mdx";
 
 # Drizzle \<\> Cloudflare D1
 
 <Prerequisites>
 - Database [connection basics](/docs/connect-overview) with Drizzle
-- D1 Database - [website](https://developers.cloudflare.com/d1/)
-- D1 driver - [website](https://developers.cloudflare.com/d1/build-with-d1/d1-client-api/)
+- Cloudflare D1 - [read here](https://developers.cloudflare.com/d1/)
 </Prerequisites>
 
-According to the **[official website](https://developers.cloudflare.com/d1/)**, 
-D1 is Cloudflare's first queryable relational database.  
-  
-Drizzle ORM fully supports the Cloudflare D1 database and Cloudflare Workers environment.
-We embrace SQL dialects and dialect specific drivers and syntax and mirror most popular 
-SQLite-like `all`, `get`, `values` and `run` query methods syntax.
-
-To setup project for your Cloudflare D1 please refer to **[official docs.](https://developers.cloudflare.com/d1/)**
+Use `drizzle-orm/d1-object` for Cloudflare D1.
 
 #### Step 1 - Install packages
+
 <Npm>
 drizzle-orm
 -D drizzle-kit
 </Npm>
 
-#### Step 2 - Initialize the driver and make a query
+#### Step 2 - Define your schema
 
-You would need to have either a `wrangler.json` or a `wrangler.toml` file for D1 database and will look something like this:
-<CodeTabs items={["wrangler.json", "wrangler.toml"]}>
-```json
+```typescript copy filename="src/schema.ts"
+import { sql } from 'drizzle-orm';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const posts = sqliteTable('posts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+```
+
+#### Step 3 - Add Wrangler config
+
+```jsonc copy filename="wrangler.jsonc"
 {
-    "name": "YOUR_PROJECT_NAME",
-    "main": "src/index.ts",
-    "compatibility_date": "2024-09-26",
-    "compatibility_flags": [
-        "nodejs_compat"
-    ],
-    "d1_databases": [
-        {
-            "binding": "BINDING_NAME",
-            "database_name": "YOUR_DB_NAME",
-            "database_id": "YOUR_DB_ID",
-            "migrations_dir": "drizzle/migrations"
-        }
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "d1-drizzle-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BlogDatabase",
+        "class_name": "BlogDatabase"
+      }
     ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BlogDatabase"]
+    }
+  ]
 }
 ```
-```toml
-name = "YOUR_PROJECT_NAME"
-main = "src/index.ts"
-compatibility_date = "2022-11-07"
-node_compat = true
 
-[[ d1_databases ]]
-binding = "BINDING_NAME"
-database_name = "YOUR_DB_NAME"
-database_id = "YOUR_DB_ID"
-migrations_dir = "drizzle/migrations"
-```
-</CodeTabs>
+#### Step 4 - Put Drizzle in the database object
 
-Make your first D1 query:
-```typescript copy
-import { drizzle } from 'drizzle-orm/d1';
+The Worker routes each request to a database object and wraps the object stub with `drizzle()`. You keep Drizzle's normal query syntax in the Worker, while SQL executes inside that object.
+
+```typescript copy filename="src/index.ts"
+import { desc } from 'drizzle-orm';
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import { posts } from './schema';
+import * as schema from './schema';
+
+type CreatePostInput = {
+  title: string;
+  body: string;
+};
 
 export interface Env {
-  <BINDING_NAME>: D1Database;
+  BlogDatabase: DurableObjectNamespace<BlogDatabase>;
+}
+
+// This class is the database. Drizzle runs here, inside the Durable Object.
+export class BlogDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
 }
 
 export default {
-  async fetch(request: Request, env: Env) {
-    const db = drizzle(env.<BINDING_NAME>);
-    const result = await db.select().from(users).all()
-    return Response.json(result);
+  async fetch(request, env): Promise<Response> {
+    const url = new URL(request.url);
+    const objectName = `site:${url.hostname}`;
+    const id = env.BlogDatabase.idFromName(objectName);
+    const db = drizzle<BlogDatabase, typeof schema>(env.BlogDatabase.get(id), { schema });
+
+    if (request.method === 'POST' && url.pathname === '/posts') {
+      const input = (await request.json()) as CreatePostInput;
+      const post = await db.insert(posts).values(input).returning().get();
+
+      return Response.json(post, { status: 201 });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/posts') {
+      const latestPosts = await db
+        .select()
+        .from(posts)
+        .orderBy(desc(posts.id))
+        .limit(10)
+        .all();
+
+      return Response.json(latestPosts);
+    }
+
+    return new Response('Not found', { status: 404 });
   },
-};
+} satisfies ExportedHandler<Env>;
 ```
+
+<D1ObjectRouting />
+
+#### Step 5 - Configure Drizzle Kit
+
+```typescript copy filename="drizzle.config.ts"
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './src/schema.ts',
+  dialect: 'sqlite',
+  driver: 'd1-object',
+  out: './drizzle',
+});
+```
+
+Generate migrations:
+
+```bash copy
+npx drizzle-kit generate
+```
+
+#### Step 6 - Apply migrations
+
+Run generated migrations through your D1 class.
+
+```typescript copy filename="src/index.ts"
+import { DrizzleD1Object, drizzle } from 'drizzle-orm/d1-object';
+import migrations from '../drizzle/migrations';
+import * as schema from './schema';
+
+export class BlogDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  applyMigrations() {
+    return this.applyDrizzleMigrations(migrations);
+  }
+}
+```
+
+Call the method through the remote database:
+
+```typescript copy
+const id = env.BlogDatabase.idFromName('site:example.com');
+const db = drizzle<BlogDatabase>(env.BlogDatabase.get(id));
+
+await db.d1.client.applyMigrations();
+```
+
+<Callout type="warning" title="Legacy D1 binding driver">
+The `drizzle-orm/d1` driver and `driver: "d1-http"` Drizzle Kit configuration are for older D1 database bindings. Use them only for existing projects that cannot move yet. See [Cloudflare D1 database bindings](/docs/connect-cloudflare-d1-legacy).
+</Callout>
 
 #### What's next?
 

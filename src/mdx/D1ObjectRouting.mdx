@@ -1,0 +1,88 @@
+#### Where your Drizzle code runs
+
+The Worker receives HTTP requests and routes them to a database object. It wraps the object stub with `drizzle()` to create a remote Drizzle database for that logical database.
+
+When the Worker calls `env.YourDatabase.idFromName(objectName)` and `env.YourDatabase.get(id)`, it gets a Durable Object stub. Pass that stub to `drizzle()` with your schema to keep Drizzle's normal query syntax at the request boundary:
+
+```typescript
+const id = env.YourDatabase.idFromName(objectName);
+const stub = env.YourDatabase.get(id);
+const db = drizzle<YourDatabase, typeof schema>(stub, { schema });
+
+const users = await db.select().from(usersTable).all();
+const result = await db.d1.client.someApplicationMethod();
+```
+
+Remote Drizzle queries and object methods still run inside the Durable Object, next to SQLite. Put the in-object Drizzle client on the object class. Keep custom methods there for multi-statement transactions or application code that must run in one object invocation:
+
+```typescript
+export class YourDatabase extends DrizzleD1Object<Env> {
+  db = drizzle(this.ctx, { schema });
+
+  async someApplicationMethod() {
+    return this.db.select().from(users).all();
+  }
+}
+```
+
+#### How writes reach the primary
+
+With this setup, Cloudflare can keep read replicas close to users. `DrizzleD1Object` enables read replication by default on the primary object. The primary can read and write, while replicas are read-only.
+
+Direct writes through the remote Drizzle database are classified as writes and forwarded from replicas to the primary. If you put writes inside object methods, mark those methods with `d1PrimaryMethods()` so calls that land on a replica forward to the primary before your method body runs:
+
+```typescript copy
+import { DrizzleD1Object, d1PrimaryMethods, drizzle } from 'drizzle-orm/d1-object';
+
+export class YourDatabase extends DrizzleD1Object<Env> {
+  static override readonly primaryMethods = d1PrimaryMethods<YourDatabase>()('createUser');
+
+  db = drizzle(this.ctx, { schema });
+
+  async createUser(input: typeof users.$inferInsert) {
+    return this.db.insert(users).values(input).returning().get();
+  }
+}
+```
+
+Unmarked writes and transactions inside object methods throw on replicas instead of being query-forwarded. Remote Drizzle sessions do not support transactions; define an object method and run `db.transaction()` inside the object. `applyDrizzleMigrations()` already forwards migrations to the primary. Raw SQL is write-classified by default; use `db.d1.readAll()`, `db.d1.readGet()`, or `db.d1.readValues()` for explicit raw reads that may run on replicas.
+
+To disable read replicas for an object, pass `readReplication: false` to the base class:
+
+```typescript copy
+export class YourDatabase extends DrizzleD1Object<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env, { readReplication: false });
+  }
+
+  db = drizzle(this.ctx, { schema });
+}
+```
+
+#### When to use bookmarks
+
+A bookmark is an opaque marker for a point in the object's write history. Use one when a client writes data and a later request must read at least that state, even if the read is served by a replica.
+
+You do not pass bookmarks into your object methods. Pass the incoming bookmark to `drizzle()` and return the database's updated bookmark:
+
+```typescript copy
+const db = drizzle<YourDatabase, typeof schema>(
+  env.YourDatabase.get(env.YourDatabase.idFromName(objectName)),
+  {
+    schema,
+    bookmark: request.headers.get('x-d1-bookmark'),
+  },
+);
+
+const result = await db.d1.client.someReadMethod();
+
+return Response.json(result, {
+  headers: { 'x-d1-bookmark': db.d1.getBookmark() ?? '' },
+});
+```
+
+Omit the bookmark option and response header when stale reads are acceptable for that route.
+
+Calls through one remote database share bookmark state across `db.d1.client` and remote Drizzle queries. The remote session preserves causal order while allowing independent RPC calls to be issued eagerly. Use separate databases for intentionally independent request chains.
+
+The lower-level `createD1ObjectSession()` helper remains available for code that prefers an explicit `{ client, db }` wrapper.
